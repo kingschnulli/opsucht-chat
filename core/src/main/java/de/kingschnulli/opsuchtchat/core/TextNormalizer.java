@@ -9,6 +9,10 @@ final class TextNormalizer {
 
     static String normalize(String input) {
         String value = Normalizer.normalize(input, Normalizer.Form.NFKC)
+                // Some Opsucht messages contain literal legacy Minecraft formatting
+                // codes inside the component text. They are visual metadata, not
+                // part of the message format we want to classify.
+                .replaceAll("(?i)§[0-9A-FK-ORX]", "")
                 .replace('\u00A0', ' ')
                 .replace("\u200B", "")
                 .replace("\u200C", "")
