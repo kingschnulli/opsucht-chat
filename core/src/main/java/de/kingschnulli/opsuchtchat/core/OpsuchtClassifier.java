@@ -98,6 +98,11 @@ public final class OpsuchtClassifier {
             return new Classification(ChatCategory.SERVER, "server.prefix");
         }
 
+        if (message.source() == ChatSource.CLIENT_SYSTEM
+                && (text.contains("bungeecord") || text.contains("does not provide recipes to jei"))) {
+            return new Classification(ChatCategory.SERVER, "server.client-warning");
+        }
+
         PrivateParts privateParts = parsePrivate(cleanText);
         if (privateParts != null) {
             return new Classification(
@@ -146,6 +151,11 @@ public final class OpsuchtClassifier {
 
         if (matchesAny(SERVER_PREFIX_PATTERNS, text)) {
             return new Classification(ChatCategory.SERVER, "server.prefix");
+        }
+
+        if (message.source() == ChatSource.CLIENT_SYSTEM
+                && (text.contains("bungeecord") || text.contains("does not provide recipes to jei"))) {
+            return new Classification(ChatCategory.SERVER, "server.client-warning");
         }
 
         PrivateParts privateParts = parsePrivate(cleanText);
