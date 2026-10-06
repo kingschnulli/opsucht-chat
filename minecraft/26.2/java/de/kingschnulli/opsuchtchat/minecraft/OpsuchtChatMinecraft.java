@@ -22,8 +22,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.WeakHashMap;
 import java.util.function.Predicate;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.screens.ChatScreen;
@@ -39,9 +37,6 @@ import net.minecraft.network.chat.Style;
 
 public final class OpsuchtChatMinecraft {
     private static final String OPEN_PRIVATE_PREFIX = "/opschat pn ";
-    private static final Pattern PLAYER_CHAT_NAME = Pattern.compile(
-            "(?m)(?:^|\\n)[^|\\n]+\\|\\s*(.+?)\\s*»"
-    );
 
     private static final int FRAME_X = 5;
     private static final int FRAME_MAX_WIDTH = 250;
@@ -191,24 +186,28 @@ public final class OpsuchtChatMinecraft {
         }
 
         String plain = contents.getString();
-        Matcher matcher = PLAYER_CHAT_NAME.matcher(plain);
-        if (!matcher.find()) {
+        String player = adapter.extractPublicPlayerName(plain);
+        if (player == null) {
             return contents;
         }
 
-        String rawPlayer = matcher.group(1);
-        String player = rawPlayer
-                .replaceAll("(?i)§[0-9A-FK-ORX]", "")
-                .trim();
-        if (!player.matches("[A-Za-z0-9_.~-]{1,32}")) {
-            return contents;
-        }
-
-        observedPublicAliases.put(identityBase(player), player);
+        observedPublicAliases.put(serverIdentityBase(player), player);
         String privateTarget = resolvePrivateTarget(player);
 
-        int targetStart = matcher.start(1);
-        int targetEnd = matcher.end(1);
+        int targetStart = plain.indexOf(player);
+        if (targetStart < 0) {
+            String colorless = plain.replaceAll("(?i)§[0-9A-FK-ORX]", "");
+            int colorlessIndex = colorless.indexOf(player);
+            if (colorlessIndex < 0) {
+                return contents;
+            }
+
+            // Styled/legacy-colored names may not share the same character offsets.
+            // In that case keep the original component untouched; the identity is still
+            // learned and will resolve through PM/session data.
+            return contents;
+        }
+        int targetEnd = targetStart + player.length();
         MutableComponent result = Component.empty();
         int cursor = 0;
 
@@ -392,6 +391,10 @@ public final class OpsuchtChatMinecraft {
         return engine == null || partner == null ? List.of() : engine.privateMessages(partner);
     }
 
+    public static String resolvedPrivateTarget(String displayedName) {
+        return resolvePrivateTarget(displayedName);
+    }
+
     public static PlayerInfo playerInfo(String playerName) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.getConnection() == null || playerName == null) {
@@ -406,10 +409,10 @@ public final class OpsuchtChatMinecraft {
             }
         }
 
-        String base = identityBase(target);
+        String base = serverIdentityBase(target);
         PlayerInfo match = null;
         for (PlayerInfo info : minecraft.getConnection().getOnlinePlayers()) {
-            if (identityBase(info.getProfile().name()).equals(base)) {
+            if (serverIdentityBase(info.getProfile().name()).equals(base)) {
                 if (match != null) {
                     return null;
                 }
@@ -643,7 +646,7 @@ public final class OpsuchtChatMinecraft {
 
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft != null && minecraft.getConnection() != null) {
-            String base = identityBase(trimmed);
+            String base = serverIdentityBase(trimmed);
             String candidate = null;
 
             for (PlayerInfo info : minecraft.getConnection().getOnlinePlayers()) {
@@ -651,7 +654,7 @@ public final class OpsuchtChatMinecraft {
                 if (profileName.equalsIgnoreCase(trimmed)) {
                     return profileName;
                 }
-                if (identityBase(profileName).equals(base)) {
+                if (serverIdentityBase(profileName).equals(base)) {
                     if (candidate != null && !candidate.equalsIgnoreCase(profileName)) {
                         candidate = null;
                         break;
@@ -667,10 +670,10 @@ public final class OpsuchtChatMinecraft {
         }
 
         if (engine != null) {
-            String base = identityBase(trimmed);
+            String base = serverIdentityBase(trimmed);
             String candidate = null;
             for (PrivateConversation conversation : engine.recentPrivateConversations()) {
-                if (identityBase(conversation.name()).equals(base)) {
+                if (serverIdentityBase(conversation.name()).equals(base)) {
                     if (candidate != null && !candidate.equalsIgnoreCase(conversation.name())) {
                         return trimmed;
                     }
@@ -687,7 +690,7 @@ public final class OpsuchtChatMinecraft {
     }
 
     private static void learnAliasesForCanonical(String canonical) {
-        String base = identityBase(canonical);
+        String base = serverIdentityBase(canonical);
         String alias = observedPublicAliases.get(base);
         if (alias != null && !alias.equalsIgnoreCase(canonical)) {
             rememberAlias(alias, canonical);
@@ -708,21 +711,8 @@ public final class OpsuchtChatMinecraft {
         }
     }
 
-    private static String identityBase(String value) {
-        if (value == null) {
-            return "";
-        }
-
-        String normalized = value
-                .replaceAll("(?i)§[0-9A-FK-ORX]", "")
-                .trim()
-                .toLowerCase(Locale.ROOT);
-
-        while (normalized.startsWith("~") || normalized.startsWith(".")) {
-            normalized = normalized.substring(1);
-        }
-
-        return normalized;
+    private static String serverIdentityBase(String value) {
+        return adapter == null ? (value == null ? "" : value.trim().toLowerCase(Locale.ROOT)) : adapter.identityBase(value);
     }
 
     private static void saveFavorites() {
