@@ -197,6 +197,11 @@ public class ChatEngine {
                 && activePrivateKey.equals(conversationKey(partner));
     }
 
+    public synchronized boolean isPrivatePinned(String partner) {
+        ConversationState state = privateConversations.get(conversationKey(partner));
+        return state != null && state.pinned;
+    }
+
     public synchronized int unread(ChatCategory category) {
         if (category == ChatCategory.PRIVATE) {
             int total = unattributedPrivateUnread;
