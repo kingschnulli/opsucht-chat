@@ -2,13 +2,16 @@ package de.kingschnulli.opsuchtchat.core.server;
 
 import de.kingschnulli.opsuchtchat.core.ChatEnvelope;
 import de.kingschnulli.opsuchtchat.core.Classification;
+import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
+import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
 import java.util.Locale;
 
 /**
  * Server-specific semantics live behind this boundary.
  *
  * The UI and social model must not know how a server formats PMs, auctions,
- * advertisements, public player names, aliases or commands.
+ * advertisements, public player names, aliases, server events or commands.
  */
 public interface ChatServerAdapter {
     String id();
@@ -30,6 +33,19 @@ public interface ChatServerAdapter {
     }
 
     default String extractPublicPlayerName(String text) {
+        PublicChatLine parsed = parsePublicChat(text);
+        return parsed == null ? null : parsed.player();
+    }
+
+    default PublicChatLine parsePublicChat(String text) {
+        return null;
+    }
+
+    default ServerFeedEvent parseServerEvent(String text) {
+        return null;
+    }
+
+    default AuctionFeedEvent parseAuctionEvent(String text) {
         return null;
     }
 
