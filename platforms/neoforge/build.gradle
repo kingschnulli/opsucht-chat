@@ -28,12 +28,23 @@ neoForge {
     }
 }
 
+configurations {
+    include {
+        transitive = false
+    }
+}
+
 dependencies {
     implementation project(':core')
+    include project(':core')
 }
 
 tasks.named('jar') {
-    from project(':core').sourceSets.main.output
+    dependsOn ':core:jar'
+    from {
+        configurations.include.collect { zipTree(it) }
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {

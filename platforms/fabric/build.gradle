@@ -15,10 +15,17 @@ java {
 sourceSets.main.java.srcDir rootProject.file('minecraft/26.2/java')
 sourceSets.main.resources.srcDir rootProject.file('minecraft/26.2/resources')
 
+configurations {
+    include {
+        transitive = false
+    }
+}
+
 dependencies {
     minecraft "com.mojang:minecraft:${minecraft_version}"
-    modImplementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+    implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
     implementation project(':core')
+    include project(':core')
 }
 
 loom {
@@ -37,7 +44,11 @@ processResources {
 }
 
 tasks.named('jar') {
-    from project(':core').sourceSets.main.output
+    dependsOn ':core:jar'
+    from {
+        configurations.include.collect { zipTree(it) }
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.withType(JavaCompile).configureEach {
