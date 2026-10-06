@@ -22,10 +22,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
@@ -66,6 +68,7 @@ public final class OpsuchtChatMinecraft {
     private static DebugCapture debugCapture;
     private static Map<String, String> aliasCache = Map.of();
     private static final Map<String, String> observedPublicAliases = new HashMap<>();
+    private static final Set<String> importantMessageKeys = new HashSet<>();
 
     private OpsuchtChatMinecraft() {
     }
@@ -486,11 +489,23 @@ public final class OpsuchtChatMinecraft {
     }
 
     public static boolean isImportant(PrivateMessageEntry message) {
-        return socialStore != null && socialStore.isImportant(message);
+        return message != null
+                && importantMessageKeys.contains(LocalSocialStore.privateMessageKey(message));
     }
 
     public static boolean setImportant(PrivateMessageEntry message, boolean important) {
-        return socialStore != null && socialStore.setImportant(message, important);
+        if (socialStore == null || message == null) {
+            return false;
+        }
+
+        boolean stored = socialStore.setImportant(message, important);
+        String key = LocalSocialStore.privateMessageKey(message);
+        if (stored) {
+            importantMessageKeys.add(key);
+        } else {
+            importantMessageKeys.remove(key);
+        }
+        return stored;
     }
 
     public static String tabLabel(ChatCategory category) {
@@ -676,6 +691,7 @@ public final class OpsuchtChatMinecraft {
         adapter = ServerAdapterRegistry.resolve(address);
         engine = adapter == null ? null : new ChatEngine(adapter);
         socialStore = null;
+        importantMessageKeys.clear();
 
         if (adapter == null || engine == null) {
             return;
@@ -684,6 +700,7 @@ public final class OpsuchtChatMinecraft {
         socialStore = new LocalSocialStore(rootDataDir(), adapter.id());
         aliasCache = socialStore.loadAliases();
         observedPublicAliases.clear();
+        importantMessageKeys.addAll(socialStore.loadImportantMessageKeys());
 
         if ("opsucht".equals(adapter.id())) {
             socialStore.importLegacyFavorites(rootDataDir().resolve("pinned-pn.txt"));
