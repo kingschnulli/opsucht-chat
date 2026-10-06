@@ -38,7 +38,7 @@ Links stehen die letzten Unterhaltungen, rechts der Verlauf des ausgewählten Sp
 - Skin-Kopf, Spielername, Vorschau der letzten Nachricht und Uhrzeit
 - Ungelesen-Zähler
 - **★** Favorit/Pin
-- **×** zum Schließen
+- **×** zum Schließen; geschlossene Sessions bleiben bis zur nächsten Nachricht oder zum erneuten Öffnen verborgen
 - lokale PN-Historie über Neustarts hinweg
 
 Wird eine Spieler-Unterhaltung geöffnet, wird normal eingegebener Text automatisch über den Server-Adapter als PN verschickt. Auf OPSUCHT entspricht das:
@@ -69,7 +69,8 @@ Es gibt keine Telemetrie und keinen Upload. Social-Daten liegen ausschließlich 
         ├── favorites.txt
         ├── private-messages.tsv
         ├── aliases.tsv
-        └── important-private.txt
+        ├── important-private.txt
+        └── closed-conversations.txt
 ```
 
 Der Debug-Logger ist standardmäßig aus und wird mit `/opschat debug` umgeschaltet.
