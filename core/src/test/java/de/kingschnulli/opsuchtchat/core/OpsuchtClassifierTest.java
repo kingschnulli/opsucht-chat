@@ -28,7 +28,7 @@ class OpsuchtClassifierTest {
         Classification result = classifier.classify(new ChatEnvelope(
                 now,
                 ChatSource.SERVER_SYSTEM,
-                "FREUNDE » [Mir -> Ruffy333] jo"
+                "FREUNDE » [Du -> Ruffy333] jo"
         ));
 
         assertEquals(ChatCategory.PRIVATE, result.category());
