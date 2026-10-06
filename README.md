@@ -7,12 +7,19 @@ Das Ziel ist nicht, den Minecraft-Chat neu zu erfinden. Opsucht Chat lässt den 
 ## Tabs
 
 - **ALL** – wirklich alle Nachrichten, unverändert und als Sicherheitsnetz
-- **PN [x]** – Privatnachrichten, inklusive Ungelesen-Zähler
+- **MSG** – normaler Chat: alles, was nicht in einen Spezial-Tab einsortiert wurde
+- **PN [x]** – alle Privatnachrichten, inklusive Ungelesen-Zähler
 - **AUKTION** – Start, Gebote und Abschluss einer laufenden Versteigerung
 - **SERVER** – Server-/Systemmeldungen
 - **WERBUNG** – erkannte Werbung
 
-Unbekannte Nachrichten bleiben immer in **ALL**. Eine unvollständige Regel kann deshalb niemals eine Nachricht vollständig verschwinden lassen.
+Unbekannte Nachrichten landen in **MSG** und bleiben zusätzlich immer in **ALL**. Eine unvollständige Regel kann deshalb niemals eine Nachricht vollständig verschwinden lassen.
+
+### Private Nachrichten
+
+Sobald echte PNs erkannt werden, erscheinen oberhalb der Haupt-Tabs bis zu vier zuletzt aktive Spieler als eigene Tabs. Lange Spielernamen werden gekürzt; ungelesene Nachrichten werden pro Spieler gezählt.
+
+Wird ein Spieler-Tab geöffnet, wird normal eingegebener Text automatisch als `/msg <Spieler> <Text>` gesendet. Explizite Slash-Commands bleiben unverändert. Die Tab-Buttons übernehmen beim Klicken nicht den Tastaturfokus, damit direkt weitergeschrieben werden kann.
 
 ## Auktionen
 
@@ -59,6 +66,7 @@ Lokale Befehle:
 ```text
 /opschat
 /opschat tab all
+/opschat tab msg
 /opschat tab pn
 /opschat tab auktion
 /opschat tab server
