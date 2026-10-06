@@ -23,6 +23,8 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.ChatComponent;
+import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.chat.GuiMessage;
 import net.minecraft.client.multiplayer.chat.GuiMessageSource;
@@ -37,6 +39,13 @@ public final class OpsuchtChatMinecraft {
     private static final Pattern PLAYER_CHAT_NAME = Pattern.compile(
             "(?m)(?:^|\\n)[^|\\n]+\\|\\s*([A-Za-z0-9_.~-]{1,32})\\s*»"
     );
+
+    private static final int FRAME_X = 6;
+    private static final int FRAME_MAX_WIDTH = 430;
+    private static final int FRAME_MIN_WIDTH = 300;
+    private static final int SIDEBAR_MAX_WIDTH = 124;
+    private static final int SIDEBAR_MIN_WIDTH = 102;
+    private static final int MESSAGE_BOTTOM_GAP = 42;
 
     private static final OpsuchtChatEngine ENGINE = new OpsuchtChatEngine();
     private static final Map<GuiMessage, Classification> CLASSIFICATIONS =
@@ -74,6 +83,94 @@ public final class OpsuchtChatMinecraft {
         }
         ServerData server = minecraft.getCurrentServer();
         return server != null && OpsuchtHost.matches(server.ip);
+    }
+
+    public static boolean isChatFrameActive() {
+        Minecraft minecraft = Minecraft.getInstance();
+        return isActive()
+                && minecraft != null
+                && minecraft.gui != null
+                && minecraft.gui.screen() instanceof ChatScreen;
+    }
+
+    public static int frameX() {
+        return FRAME_X;
+    }
+
+    public static int frameWidth() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            return FRAME_MAX_WIDTH;
+        }
+
+        int screenWidth = minecraft.getWindow().getGuiScaledWidth();
+        int preferred = Math.min(FRAME_MAX_WIDTH, Math.max(FRAME_MIN_WIDTH, (int)Math.round(screenWidth * 0.48)));
+        return Math.max(220, Math.min(screenWidth - FRAME_X * 2, preferred));
+    }
+
+    public static int messageBottom() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            return 0;
+        }
+        return minecraft.getWindow().getGuiScaledHeight() - MESSAGE_BOTTOM_GAP;
+    }
+
+    public static int messageHeightPixels() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            return 120;
+        }
+
+        int screenHeight = minecraft.getWindow().getGuiScaledHeight();
+        double scale = Math.max(0.1, minecraft.options.chatScale().get());
+        int configured = (int)Math.ceil(ChatComponent.getHeight(minecraft.options.chatHeightFocused().get()) * scale);
+        int desired = Math.max(configured, 126);
+        return Math.max(72, Math.min(desired, screenHeight - 104));
+    }
+
+    public static int frameTop() {
+        return messageBottom() - messageHeightPixels() - 4;
+    }
+
+    public static int frameBottom() {
+        Minecraft minecraft = Minecraft.getInstance();
+        return minecraft == null ? 0 : minecraft.getWindow().getGuiScaledHeight() - 2;
+    }
+
+    public static int sidebarWidth() {
+        if (ENGINE.activeCategory() != ChatCategory.PRIVATE) {
+            return 0;
+        }
+
+        int frameWidth = frameWidth();
+        return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, frameWidth / 3));
+    }
+
+    public static int chatRenderOffsetX() {
+        int sidebar = sidebarWidth();
+        return FRAME_X + (sidebar == 0 ? 0 : sidebar + 5);
+    }
+
+    public static int chatContentWidthLogical() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            return 320;
+        }
+
+        double scale = Math.max(0.1, minecraft.options.chatScale().get());
+        int contentPixels = frameWidth() - sidebarWidth() - 12;
+        return Math.max(40, (int)Math.floor(contentPixels / scale));
+    }
+
+    public static int chatContentHeightLogical() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            return 180;
+        }
+
+        double scale = Math.max(0.1, minecraft.options.chatScale().get());
+        return Math.max(20, (int)Math.floor(messageHeightPixels() / scale));
     }
 
     public static boolean allowedByVanilla(GuiMessage message) {
@@ -205,6 +302,14 @@ public final class OpsuchtChatMinecraft {
         return pinned;
     }
 
+    public static ChatCategory activeCategory() {
+        return ENGINE.activeCategory();
+    }
+
+    public static String activePrivatePartner() {
+        return ENGINE.activePrivatePartner();
+    }
+
     public static boolean isCategorySelected(ChatCategory category) {
         if (ENGINE.activeCategory() != category) {
             return false;
@@ -239,6 +344,22 @@ public final class OpsuchtChatMinecraft {
             label += " [" + compactUnread(conversation.unread()) + "]";
         }
         return label;
+    }
+
+    public static String inputContextLabel() {
+        String partner = ENGINE.activePrivatePartner();
+        if (partner != null) {
+            return "An: " + shortenPlayerName(partner, 13);
+        }
+
+        return switch (ENGINE.activeCategory()) {
+            case ALL -> "ALL";
+            case MESSAGE -> "MSG";
+            case PRIVATE -> "PN";
+            case AUCTION -> "AUKTION";
+            case SERVER -> "SERVER";
+            case ADVERTISING -> "WERBUNG";
+        };
     }
 
     public static void onChatCleared() {
@@ -406,7 +527,7 @@ public final class OpsuchtChatMinecraft {
                     StandardOpenOption.TRUNCATE_EXISTING
             );
         } catch (IOException ignored) {
-            // Same rule as debug logging: local persistence must never break chat.
+            // Local persistence must never break chat.
         }
     }
 

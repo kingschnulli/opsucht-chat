@@ -6,10 +6,10 @@ import de.kingschnulli.opsuchtchat.minecraft.OpsuchtChatMinecraft;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import java.util.function.BooleanSupplier;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
@@ -20,32 +20,46 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(ChatScreen.class)
 public abstract class ChatScreenMixin extends Screen {
     @Unique
+    private static final int TAB_GAP = 2;
+    @Unique
+    private static final int TAB_HEIGHT = 16;
+    @Unique
+    private static final int INPUT_CONTEXT_WIDTH = 84;
+    @Unique
     private static final int PRIVATE_TAB_SLOTS = 6;
+
     @Unique
-    private static final int PRIVATE_NAME_WIDTH = 74;
+    private static final int PANEL_BG = 0xD014181F;
     @Unique
-    private static final int PRIVATE_ACTION_WIDTH = 16;
+    private static final int PANEL_BG_ALT = 0xD81A2028;
     @Unique
-    private static final int PRIVATE_SLOT_WIDTH = PRIVATE_NAME_WIDTH + PRIVATE_ACTION_WIDTH * 2 + 4;
+    private static final int BORDER = 0xD064707C;
+    @Unique
+    private static final int ACCENT = 0xFF31A8E6;
+    @Unique
+    private static final int TEXT = 0xFFF3F6F8;
+    @Unique
+    private static final int MUTED = 0xFF9AA6B2;
 
     @Shadow
     protected EditBox input;
 
     @Unique
-    private final Map<ChatCategory, Button> opsuchtChat$buttons = new EnumMap<>(ChatCategory.class);
+    private final Map<ChatCategory, FrameButton> opsuchtChat$buttons = new EnumMap<>(ChatCategory.class);
 
     @Unique
-    private final Button[] opsuchtChat$privateNameButtons = new Button[PRIVATE_TAB_SLOTS];
+    private final FrameButton[] opsuchtChat$privateNameButtons = new FrameButton[PRIVATE_TAB_SLOTS];
     @Unique
-    private final Button[] opsuchtChat$privatePinButtons = new Button[PRIVATE_TAB_SLOTS];
+    private final FrameButton[] opsuchtChat$privatePinButtons = new FrameButton[PRIVATE_TAB_SLOTS];
     @Unique
-    private final Button[] opsuchtChat$privateCloseButtons = new Button[PRIVATE_TAB_SLOTS];
+    private final FrameButton[] opsuchtChat$privateCloseButtons = new FrameButton[PRIVATE_TAB_SLOTS];
     @Unique
     private final String[] opsuchtChat$privatePartners = new String[PRIVATE_TAB_SLOTS];
 
@@ -54,38 +68,99 @@ public abstract class ChatScreenMixin extends Screen {
     }
 
     @Inject(method = "init", at = @At("TAIL"))
-    private void opsuchtChat$addTabs(CallbackInfo ci) {
+    private void opsuchtChat$initFrame(CallbackInfo ci) {
         OpsuchtChatMinecraft.installFilter();
         opsuchtChat$buttons.clear();
+
         if (!OpsuchtChatMinecraft.isActive()) {
             return;
         }
 
-        int x = 2;
-        int y = this.height - 31;
-        x = opsuchtChat$addButton(ChatCategory.ALL, x, y, 42);
-        x = opsuchtChat$addButton(ChatCategory.MESSAGE, x, y, 46);
-        x = opsuchtChat$addButton(ChatCategory.PRIVATE, x, y, 54);
-        x = opsuchtChat$addButton(ChatCategory.AUCTION, x, y, 70);
-        x = opsuchtChat$addButton(ChatCategory.SERVER, x, y, 58);
-        opsuchtChat$addButton(ChatCategory.ADVERTISING, x, y, 72);
+        opsuchtChat$positionInput();
+        opsuchtChat$addMainTabs();
+        opsuchtChat$addPrivateSidebarButtons();
+    }
 
-        opsuchtChat$addPrivateButtons();
+    @Inject(method = "removed", at = @At("TAIL"))
+    private void opsuchtChat$restoreHudWrapping(CallbackInfo ci) {
+        OpsuchtChatMinecraft.installFilter();
     }
 
     @Inject(method = "extractRenderState", at = @At("HEAD"))
-    private void opsuchtChat$refreshTabs(
+    private void opsuchtChat$drawFrame(
             GuiGraphicsExtractor graphics,
             int mouseX,
             int mouseY,
             float partialTick,
             CallbackInfo ci
     ) {
-        for (Map.Entry<ChatCategory, Button> entry : opsuchtChat$buttons.entrySet()) {
-            entry.getValue().setMessage(Component.literal(OpsuchtChatMinecraft.tabLabel(entry.getKey())));
+        if (!OpsuchtChatMinecraft.isChatFrameActive()) {
+            return;
         }
 
-        opsuchtChat$refreshPrivateButtons();
+        opsuchtChat$positionInput();
+        opsuchtChat$positionMainTabs();
+        opsuchtChat$refreshPrivateSidebar();
+
+        int x = OpsuchtChatMinecraft.frameX();
+        int width = OpsuchtChatMinecraft.frameWidth();
+        int right = x + width;
+        int top = OpsuchtChatMinecraft.frameTop();
+        int bottom = OpsuchtChatMinecraft.frameBottom();
+        int messageBottom = OpsuchtChatMinecraft.messageBottom();
+        int inputTop = this.height - 21;
+
+        graphics.fill(x, top, right, bottom, PANEL_BG);
+        graphics.fill(x, top, right, top + 1, BORDER);
+        graphics.fill(x, bottom - 1, right, bottom, BORDER);
+        graphics.fill(x, top, x + 1, bottom, BORDER);
+        graphics.fill(right - 1, top, right, bottom, BORDER);
+
+        graphics.fill(x + 1, messageBottom, right - 1, messageBottom + 1, BORDER);
+        graphics.fill(x + 1, inputTop - 2, right - 1, inputTop - 1, BORDER);
+
+        if (OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE) {
+            int sidebar = OpsuchtChatMinecraft.sidebarWidth();
+            int sidebarRight = x + sidebar;
+            graphics.fill(x + 1, top + 1, sidebarRight, messageBottom, PANEL_BG_ALT);
+            graphics.fill(sidebarRight, top + 1, sidebarRight + 1, messageBottom, BORDER);
+            graphics.text(this.font, "Private Nachrichten", x + 7, top + 6, TEXT, false);
+
+            String partner = OpsuchtChatMinecraft.activePrivatePartner();
+            if (partner != null) {
+                graphics.text(this.font, "PN · " + partner, sidebarRight + 9, top + 6, TEXT, false);
+            }
+        }
+
+        if (this.input.getValue().isEmpty()) {
+            graphics.text(this.font, "Nachricht schreiben …", x + 9, inputTop + 4, MUTED, false);
+        }
+
+        int contextLeft = right - INPUT_CONTEXT_WIDTH - 5;
+        graphics.fill(contextLeft, inputTop, right - 5, bottom - 4, PANEL_BG_ALT);
+        String context = OpsuchtChatMinecraft.inputContextLabel();
+        int contextX = contextLeft + Math.max(4, (INPUT_CONTEXT_WIDTH - this.font.width(context)) / 2);
+        graphics.text(this.font, context, contextX, inputTop + 4, TEXT, false);
+    }
+
+    @Redirect(
+            method = "extractRenderState",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/gui/GuiGraphicsExtractor;fill(IIIII)V"
+            )
+    )
+    private void opsuchtChat$replaceVanillaInputBackground(
+            GuiGraphicsExtractor graphics,
+            int x0,
+            int y0,
+            int x1,
+            int y1,
+            int color
+    ) {
+        if (!OpsuchtChatMinecraft.isChatFrameActive()) {
+            graphics.fill(x0, y0, x1, y1, color);
+        }
     }
 
     @Inject(method = "handleComponentClicked", at = @At("HEAD"), cancellable = true)
@@ -109,170 +184,195 @@ public abstract class ChatScreenMixin extends Screen {
     }
 
     @Unique
-    private int opsuchtChat$addButton(ChatCategory category, int x, int y, int width) {
-        NoFocusButton button = new NoFocusButton(
-                x,
-                y,
-                width,
-                14,
-                Component.literal(OpsuchtChatMinecraft.tabLabel(category)),
-                ignored -> OpsuchtChatMinecraft.select(category)
-        );
-        button.setOverrideRenderHighlightedSprite(() -> OpsuchtChatMinecraft.isCategorySelected(category));
-        this.addRenderableWidget(button);
-        opsuchtChat$buttons.put(category, button);
-        return x + width + 2;
+    private void opsuchtChat$positionInput() {
+        int x = OpsuchtChatMinecraft.frameX();
+        int width = OpsuchtChatMinecraft.frameWidth();
+        int inputWidth = Math.max(80, width - INPUT_CONTEXT_WIDTH - 20);
+        this.input.setRectangle(inputWidth, 13, x + 8, this.height - 20);
     }
 
     @Unique
-    private void opsuchtChat$addPrivateButtons() {
-        int y = opsuchtChat$privateTabsY();
+    private void opsuchtChat$addMainTabs() {
+        for (ChatCategory category : ChatCategory.values()) {
+            FrameButton button = new FrameButton(
+                    0,
+                    0,
+                    40,
+                    TAB_HEIGHT,
+                    Component.literal(OpsuchtChatMinecraft.tabLabel(category)),
+                    ignored -> OpsuchtChatMinecraft.select(category),
+                    () -> OpsuchtChatMinecraft.isCategorySelected(category)
+            );
+            this.addRenderableWidget(button);
+            opsuchtChat$buttons.put(category, button);
+        }
+        opsuchtChat$positionMainTabs();
+    }
 
+    @Unique
+    private void opsuchtChat$positionMainTabs() {
+        if (opsuchtChat$buttons.isEmpty()) {
+            return;
+        }
+
+        int x = OpsuchtChatMinecraft.frameX() + 4;
+        int frameWidth = OpsuchtChatMinecraft.frameWidth();
+        int count = ChatCategory.values().length;
+        int usable = frameWidth - 8 - (count - 1) * TAB_GAP;
+        int width = Math.max(42, usable / count);
+        int y = this.height - 40;
+
+        for (ChatCategory category : ChatCategory.values()) {
+            FrameButton button = opsuchtChat$buttons.get(category);
+            button.setRectangle(width, TAB_HEIGHT, x, y);
+            button.setMessage(Component.literal(OpsuchtChatMinecraft.tabLabel(category)));
+            x += width + TAB_GAP;
+        }
+    }
+
+    @Unique
+    private void opsuchtChat$addPrivateSidebarButtons() {
         for (int i = 0; i < PRIVATE_TAB_SLOTS; i++) {
             final int slot = i;
-            int x = 2 + i * PRIVATE_SLOT_WIDTH;
 
-            NoFocusButton nameButton = new NoFocusButton(
-                    x,
-                    y,
-                    PRIVATE_NAME_WIDTH,
-                    14,
-                    Component.empty(),
+            FrameButton name = new FrameButton(
+                    0, 0, 60, 18, Component.empty(),
                     ignored -> {
                         String partner = opsuchtChat$privatePartners[slot];
                         if (partner != null) {
                             OpsuchtChatMinecraft.selectPrivatePartner(partner);
                         }
+                    },
+                    () -> {
+                        String partner = opsuchtChat$privatePartners[slot];
+                        return partner != null && OpsuchtChatMinecraft.isPrivatePartnerSelected(partner);
                     }
             );
-            nameButton.visible = false;
-            nameButton.setOverrideRenderHighlightedSprite(() -> {
-                String partner = opsuchtChat$privatePartners[slot];
-                return partner != null && OpsuchtChatMinecraft.isPrivatePartnerSelected(partner);
-            });
-            this.addRenderableWidget(nameButton);
-            opsuchtChat$privateNameButtons[i] = nameButton;
+            name.visible = false;
+            this.addRenderableWidget(name);
+            opsuchtChat$privateNameButtons[i] = name;
 
-            NoFocusButton pinButton = new NoFocusButton(
-                    x + PRIVATE_NAME_WIDTH + 1,
-                    y,
-                    PRIVATE_ACTION_WIDTH,
-                    14,
-                    Component.literal("☆"),
+            FrameButton pin = new FrameButton(
+                    0, 0, 14, 18, Component.literal("☆"),
                     ignored -> {
                         String partner = opsuchtChat$privatePartners[slot];
                         if (partner != null) {
                             OpsuchtChatMinecraft.togglePrivatePinned(partner);
                         }
-                    }
+                    },
+                    () -> false
             );
-            pinButton.visible = false;
-            this.addRenderableWidget(pinButton);
-            opsuchtChat$privatePinButtons[i] = pinButton;
+            pin.visible = false;
+            this.addRenderableWidget(pin);
+            opsuchtChat$privatePinButtons[i] = pin;
 
-            NoFocusButton closeButton = new NoFocusButton(
-                    x + PRIVATE_NAME_WIDTH + PRIVATE_ACTION_WIDTH + 2,
-                    y,
-                    PRIVATE_ACTION_WIDTH,
-                    14,
-                    Component.literal("×"),
+            FrameButton close = new FrameButton(
+                    0, 0, 14, 18, Component.literal("×"),
                     ignored -> {
                         String partner = opsuchtChat$privatePartners[slot];
                         if (partner != null) {
                             OpsuchtChatMinecraft.closePrivatePartner(partner);
                         }
-                    }
+                    },
+                    () -> false
             );
-            closeButton.visible = false;
-            this.addRenderableWidget(closeButton);
-            opsuchtChat$privateCloseButtons[i] = closeButton;
+            close.visible = false;
+            this.addRenderableWidget(close);
+            opsuchtChat$privateCloseButtons[i] = close;
         }
     }
 
     @Unique
-    private void opsuchtChat$refreshPrivateButtons() {
+    private void opsuchtChat$refreshPrivateSidebar() {
+        boolean visible = OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE;
         List<PrivateConversation> conversations = OpsuchtChatMinecraft.recentPrivateConversations();
-        int maxVisible = Math.min(
-                PRIVATE_TAB_SLOTS,
-                Math.max(1, opsuchtChat$chatPixelWidth() / PRIVATE_SLOT_WIDTH)
-        );
+
+        int x = OpsuchtChatMinecraft.frameX() + 4;
+        int y = OpsuchtChatMinecraft.frameTop() + 20;
+        int sidebarWidth = OpsuchtChatMinecraft.sidebarWidth();
+        int availableSlots = Math.max(0, (OpsuchtChatMinecraft.messageBottom() - y - 4) / 20);
+        int maxVisible = Math.min(PRIVATE_TAB_SLOTS, availableSlots);
+        int nameWidth = Math.max(46, sidebarWidth - 38);
 
         for (int i = 0; i < PRIVATE_TAB_SLOTS; i++) {
-            Button nameButton = opsuchtChat$privateNameButtons[i];
-            Button pinButton = opsuchtChat$privatePinButtons[i];
-            Button closeButton = opsuchtChat$privateCloseButtons[i];
-            if (nameButton == null || pinButton == null || closeButton == null) {
-                continue;
-            }
+            FrameButton name = opsuchtChat$privateNameButtons[i];
+            FrameButton pin = opsuchtChat$privatePinButtons[i];
+            FrameButton close = opsuchtChat$privateCloseButtons[i];
 
-            if (i < conversations.size() && i < maxVisible) {
+            if (visible && i < conversations.size() && i < maxVisible) {
                 PrivateConversation conversation = conversations.get(i);
                 opsuchtChat$privatePartners[i] = conversation.name();
 
-                nameButton.setMessage(Component.literal(OpsuchtChatMinecraft.privateTabLabel(conversation)));
-                pinButton.setMessage(Component.literal(conversation.pinned() ? "★" : "☆"));
-                pinButton.setOverrideRenderHighlightedSprite(conversation::pinned);
+                name.setRectangle(nameWidth, 18, x, y + i * 20);
+                name.setMessage(Component.literal(OpsuchtChatMinecraft.privateTabLabel(conversation)));
 
-                nameButton.visible = true;
-                pinButton.visible = true;
-                closeButton.visible = true;
+                pin.setRectangle(16, 18, x + nameWidth + 1, y + i * 20);
+                pin.setMessage(Component.literal(conversation.pinned() ? "★" : "☆"));
+                pin.setSelectedSupplier(conversation::pinned);
+
+                close.setRectangle(16, 18, x + nameWidth + 18, y + i * 20);
+
+                name.visible = true;
+                pin.visible = true;
+                close.visible = true;
             } else {
                 opsuchtChat$privatePartners[i] = null;
-                nameButton.visible = false;
-                pinButton.visible = false;
-                closeButton.visible = false;
+                name.visible = false;
+                pin.visible = false;
+                close.visible = false;
             }
         }
     }
 
     @Unique
-    private int opsuchtChat$privateTabsY() {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null) {
-            return Math.max(2, this.height - 63);
-        }
+    private static final class FrameButton extends Button.Plain {
+        private BooleanSupplier selected;
 
-        double scale = minecraft.options.chatScale().get();
-        int focusedChatHeight = ChatComponent.getHeight(minecraft.options.chatHeightFocused().get());
-        int chatTop = this.height - 40 - (int)Math.ceil(focusedChatHeight * scale);
-
-        // The PN strip lives outside the vanilla message viewport instead of
-        // consuming one of the visible chat lines.
-        return Math.max(2, chatTop - 15);
-    }
-
-    @Unique
-    private int opsuchtChat$chatPixelWidth() {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null) {
-            return this.width - 4;
-        }
-
-        double scale = minecraft.options.chatScale().get();
-        int chatWidth = ChatComponent.getWidth(minecraft.options.chatWidth().get());
-        return Math.max(PRIVATE_SLOT_WIDTH, (int)Math.ceil((chatWidth + 8) * scale));
-    }
-
-    /**
-     * Chat tabs are controls, not text-entry targets. Vanilla normally moves focus
-     * to a clicked Button, which makes the chat input stop receiving keystrokes.
-     */
-    @Unique
-    private static final class NoFocusButton extends Button.Plain {
-        private NoFocusButton(
+        private FrameButton(
                 int x,
                 int y,
                 int width,
                 int height,
                 Component message,
-                Button.OnPress onPress
+                Button.OnPress onPress,
+                BooleanSupplier selected
         ) {
             super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
+            this.selected = selected;
+        }
+
+        private void setSelectedSupplier(BooleanSupplier selected) {
+            this.selected = selected;
         }
 
         @Override
         public boolean shouldTakeFocusAfterInteraction() {
             return false;
+        }
+
+        @Override
+        protected void extractContents(
+                GuiGraphicsExtractor graphics,
+                int mouseX,
+                int mouseY,
+                float partialTick
+        ) {
+            boolean isSelected = selected != null && selected.getAsBoolean();
+            int background = isSelected
+                    ? 0xE0244C66
+                    : (this.isHovered() ? 0xE02A333D : 0xD0181E25);
+
+            graphics.fill(getX(), getY(), getRight(), getBottom(), background);
+
+            if (isSelected) {
+                graphics.fill(getX(), getBottom() - 2, getRight(), getBottom(), ACCENT);
+            }
+
+            Component message = getMessage();
+            int color = this.active ? TEXT : MUTED;
+            int textX = getX() + Math.max(2, (getWidth() - Minecraft.getInstance().font.width(message)) / 2);
+            int textY = getY() + Math.max(1, (getHeight() - 9) / 2);
+            graphics.text(Minecraft.getInstance().font, message, textX, textY, color, false);
         }
     }
 }
