@@ -14,7 +14,7 @@ import java.util.Map;
  */
 public final class OpsuchtChatEngine {
     private static final int MAX_TRACKED_PRIVATE_CONVERSATIONS = 12;
-    private static final int MAX_VISIBLE_PRIVATE_CONVERSATIONS = 4;
+    private static final int MAX_VISIBLE_PRIVATE_CONVERSATIONS = 6;
 
     private final OpsuchtClassifier classifier = new OpsuchtClassifier();
     private final Map<ChatCategory, Integer> unread = new EnumMap<>(ChatCategory.class);
@@ -82,6 +82,62 @@ public final class OpsuchtChatEngine {
         state.unread = 0;
     }
 
+    public synchronized void closePrivatePartner(String partner) {
+        String key = conversationKey(partner);
+        if (key.isEmpty()) {
+            return;
+        }
+
+        privateConversations.remove(key);
+        if (key.equals(activePrivateKey)) {
+            activePrivateKey = null;
+            activeCategory = ChatCategory.PRIVATE;
+        }
+    }
+
+    public synchronized boolean togglePrivatePinned(String partner) {
+        if (partner == null || partner.isBlank()) {
+            return false;
+        }
+
+        String key = conversationKey(partner);
+        ConversationState state = privateConversations.get(key);
+        if (state == null) {
+            state = new ConversationState(partner.trim());
+            privateConversations.put(key, state);
+        }
+
+        state.pinned = !state.pinned;
+        trimPrivateConversations();
+        return state.pinned;
+    }
+
+    public synchronized void restorePinnedPrivatePartner(String partner) {
+        if (partner == null || partner.isBlank()) {
+            return;
+        }
+
+        String key = conversationKey(partner);
+        ConversationState state = privateConversations.get(key);
+        if (state == null) {
+            state = new ConversationState(partner.trim());
+            privateConversations.put(key, state);
+        } else {
+            state.displayName = partner.trim();
+        }
+        state.pinned = true;
+    }
+
+    public synchronized List<String> pinnedPrivatePartners() {
+        List<String> result = new ArrayList<>();
+        for (ConversationState state : privateConversations.values()) {
+            if (state.pinned) {
+                result.add(state.displayName);
+            }
+        }
+        return List.copyOf(result);
+    }
+
     public synchronized ChatCategory activeCategory() {
         return activeCategory;
     }
@@ -112,11 +168,21 @@ public final class OpsuchtChatEngine {
     }
 
     public synchronized List<PrivateConversation> recentPrivateConversations() {
+        List<ConversationState> recent = new ArrayList<>(privateConversations.values());
+        Collections.reverse(recent);
+
         List<PrivateConversation> result = new ArrayList<>();
-        for (ConversationState state : privateConversations.values()) {
-            result.add(new PrivateConversation(state.displayName, state.unread));
+        for (ConversationState state : recent) {
+            if (state.pinned) {
+                result.add(new PrivateConversation(state.displayName, state.unread, true));
+            }
         }
-        Collections.reverse(result);
+        for (ConversationState state : recent) {
+            if (!state.pinned) {
+                result.add(new PrivateConversation(state.displayName, state.unread, false));
+            }
+        }
+
         if (result.size() > MAX_VISIBLE_PRIVATE_CONVERSATIONS) {
             return List.copyOf(result.subList(0, MAX_VISIBLE_PRIVATE_CONVERSATIONS));
         }
@@ -128,7 +194,12 @@ public final class OpsuchtChatEngine {
         activePrivateKey = null;
         unattributedPrivateUnread = 0;
         unread.replaceAll((ignored, value) -> 0);
-        privateConversations.clear();
+
+        privateConversations.entrySet().removeIf(entry -> !entry.getValue().pinned);
+        for (ConversationState state : privateConversations.values()) {
+            state.unread = 0;
+        }
+
         classifier.resetSessionState();
     }
 
@@ -158,16 +229,29 @@ public final class OpsuchtChatEngine {
     }
 
     private void trimPrivateConversations() {
-        while (privateConversations.size() > MAX_TRACKED_PRIVATE_CONVERSATIONS) {
-            String eldest = privateConversations.keySet().iterator().next();
-            if (eldest.equals(activePrivateKey) && privateConversations.size() > 1) {
-                // Touch active conversation and drop the next oldest instead.
-                ConversationState active = privateConversations.remove(eldest);
-                privateConversations.put(eldest, active);
-                eldest = privateConversations.keySet().iterator().next();
+        while (unpinnedCount() > MAX_TRACKED_PRIVATE_CONVERSATIONS) {
+            String removable = null;
+            for (Map.Entry<String, ConversationState> entry : privateConversations.entrySet()) {
+                if (!entry.getValue().pinned && !entry.getKey().equals(activePrivateKey)) {
+                    removable = entry.getKey();
+                    break;
+                }
             }
-            privateConversations.remove(eldest);
+            if (removable == null) {
+                break;
+            }
+            privateConversations.remove(removable);
         }
+    }
+
+    private int unpinnedCount() {
+        int count = 0;
+        for (ConversationState state : privateConversations.values()) {
+            if (!state.pinned) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static String conversationKey(String partner) {
@@ -177,6 +261,7 @@ public final class OpsuchtChatEngine {
     private static final class ConversationState {
         private String displayName;
         private int unread;
+        private boolean pinned;
 
         private ConversationState(String displayName) {
             this.displayName = displayName;

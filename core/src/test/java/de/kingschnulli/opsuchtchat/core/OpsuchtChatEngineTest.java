@@ -1,6 +1,8 @@
 package de.kingschnulli.opsuchtchat.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
 import java.util.List;
@@ -81,5 +83,32 @@ class OpsuchtChatEngineTest {
         assertEquals(0, ruffy.unread());
         assertEquals(1, other.unread());
         assertEquals("Ruffy333", engine.activePrivatePartner());
+    }
+
+    @Test
+    void pinPersistsAcrossSessionResetAndCloseRemovesIt() {
+        OpsuchtChatEngine engine = new OpsuchtChatEngine();
+        engine.selectPrivatePartner("Ruffy333");
+
+        assertTrue(engine.togglePrivatePinned("Ruffy333"));
+        assertTrue(engine.recentPrivateConversations().get(0).pinned());
+
+        engine.reset();
+        assertEquals("Ruffy333", engine.recentPrivateConversations().get(0).name());
+        assertTrue(engine.recentPrivateConversations().get(0).pinned());
+
+        engine.closePrivatePartner("Ruffy333");
+        assertTrue(engine.recentPrivateConversations().isEmpty());
+        assertFalse(engine.pinnedPrivatePartners().contains("Ruffy333"));
+    }
+
+    @Test
+    void restoredPinsAreVisibleBeforeAnyMessageArrives() {
+        OpsuchtChatEngine engine = new OpsuchtChatEngine();
+        engine.restorePinnedPrivatePartner("FavoriteUser");
+
+        assertEquals(1, engine.recentPrivateConversations().size());
+        assertEquals("FavoriteUser", engine.recentPrivateConversations().get(0).name());
+        assertTrue(engine.recentPrivateConversations().get(0).pinned());
     }
 }

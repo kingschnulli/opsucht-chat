@@ -42,17 +42,17 @@ public abstract class ChatComponentMixin {
             return;
         }
 
+        Component decorated = OpsuchtChatMinecraft.decorateClickablePlayerName(contents, source);
+
         Minecraft minecraft = Minecraft.getInstance();
         GuiMessage message = new GuiMessage(
                 minecraft.gui.hud.getGuiTicks(),
-                contents,
+                decorated,
                 signature,
                 source,
                 tag
         );
 
-        // Preserve vanilla restrictions exactly: messages rejected by Minecraft's
-        // own chat-abilities filter are not stored by this mod either.
         if (!OpsuchtChatMinecraft.allowedByVanilla(message)) {
             ci.cancel();
             return;
@@ -65,8 +65,6 @@ public abstract class ChatComponentMixin {
             this.opsuchtChat$addMessageToDisplayQueue(message);
         }
 
-        // Always keep allowed messages in the vanilla history. This is what makes
-        // ALL a real safety net even if another tab is selected when a line arrives.
         this.opsuchtChat$addMessageToQueue(message);
         ci.cancel();
     }

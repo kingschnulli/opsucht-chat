@@ -8,7 +8,11 @@ import de.kingschnulli.opsuchtchat.core.DebugCapture;
 import de.kingschnulli.opsuchtchat.core.OpsuchtChatEngine;
 import de.kingschnulli.opsuchtchat.core.OpsuchtHost;
 import de.kingschnulli.opsuchtchat.core.PrivateConversation;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
@@ -16,30 +20,39 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.chat.GuiMessage;
 import net.minecraft.client.multiplayer.chat.GuiMessageSource;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
 
 public final class OpsuchtChatMinecraft {
+    private static final String OPEN_PRIVATE_PREFIX = "/opschat pn ";
+    private static final Pattern PLAYER_CHAT_NAME = Pattern.compile(
+            "(?m)(?:^|\\n)[^|\\n]+\\|\\s*([A-Za-z0-9_.~-]{1,32})\\s*»"
+    );
+
     private static final OpsuchtChatEngine ENGINE = new OpsuchtChatEngine();
     private static final Map<GuiMessage, Classification> CLASSIFICATIONS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
     private static DebugCapture debugCapture;
+    private static boolean pinsLoaded;
 
     private OpsuchtChatMinecraft() {
     }
 
     public static void bootstrap() {
+        loadPinnedPartners();
         installFilter();
     }
 
-    /**
-     * Install a composed predicate: vanilla safety/restriction rules first,
-     * selected Opsucht Chat tab second.
-     */
     public static void installFilter() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft != null && minecraft.gui != null && minecraft.gui.hud != null) {
@@ -65,6 +78,72 @@ public final class OpsuchtChatMinecraft {
 
     public static boolean allowedByVanilla(GuiMessage message) {
         return vanillaFilter().test(message);
+    }
+
+    public static Component decorateClickablePlayerName(Component contents, GuiMessageSource source) {
+        if (!isActive() || source != GuiMessageSource.PLAYER) {
+            return contents;
+        }
+
+        String plain = contents.getString();
+        Matcher matcher = PLAYER_CHAT_NAME.matcher(plain);
+        if (!matcher.find()) {
+            return contents;
+        }
+
+        String player = matcher.group(1);
+        int targetStart = matcher.start(1);
+        int targetEnd = matcher.end(1);
+        MutableComponent result = Component.empty();
+        int cursor = 0;
+
+        for (Component part : contents.toFlatList()) {
+            String text = part.getString();
+            int partStart = cursor;
+            int partEnd = cursor + text.length();
+
+            if (partEnd <= targetStart || partStart >= targetEnd) {
+                result.append(Component.literal(text).withStyle(part.getStyle()));
+            } else {
+                int localStart = Math.max(0, targetStart - partStart);
+                int localEnd = Math.min(text.length(), targetEnd - partStart);
+
+                if (localStart > 0) {
+                    result.append(Component.literal(text.substring(0, localStart)).withStyle(part.getStyle()));
+                }
+
+                Style playerStyle = part.getStyle()
+                        .withClickEvent(new ClickEvent.SuggestCommand(OPEN_PRIVATE_PREFIX + player))
+                        .withHoverEvent(new HoverEvent.ShowText(Component.literal("PN mit " + player + " öffnen")));
+                result.append(Component.literal(text.substring(localStart, localEnd)).withStyle(playerStyle));
+
+                if (localEnd < text.length()) {
+                    result.append(Component.literal(text.substring(localEnd)).withStyle(part.getStyle()));
+                }
+            }
+
+            cursor = partEnd;
+        }
+
+        return cursor == plain.length() ? result : contents;
+    }
+
+    public static boolean handlePlayerNameClick(Style style) {
+        if (!isActive() || style == null) {
+            return false;
+        }
+
+        ClickEvent event = style.getClickEvent();
+        if (event instanceof ClickEvent.SuggestCommand suggest
+                && suggest.command().startsWith(OPEN_PRIVATE_PREFIX)) {
+            String player = suggest.command().substring(OPEN_PRIVATE_PREFIX.length()).trim();
+            if (!player.isEmpty()) {
+                selectPrivatePartner(player);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static void observe(GuiMessage message) {
@@ -114,12 +193,16 @@ public final class OpsuchtChatMinecraft {
         refreshChatView();
     }
 
-    public static ChatCategory activeCategory() {
-        return ENGINE.activeCategory();
+    public static void closePrivatePartner(String partner) {
+        ENGINE.closePrivatePartner(partner);
+        savePinnedPartners();
+        refreshChatView();
     }
 
-    public static String activePrivatePartner() {
-        return ENGINE.activePrivatePartner();
+    public static boolean togglePrivatePinned(String partner) {
+        boolean pinned = ENGINE.togglePrivatePinned(partner);
+        savePinnedPartners();
+        return pinned;
     }
 
     public static boolean isCategorySelected(ChatCategory category) {
@@ -151,7 +234,7 @@ public final class OpsuchtChatMinecraft {
     }
 
     public static String privateTabLabel(PrivateConversation conversation) {
-        String label = shortenPlayerName(conversation.name(), 12);
+        String label = shortenPlayerName(conversation.name(), 11);
         if (conversation.unread() > 0) {
             label += " [" + compactUnread(conversation.unread()) + "]";
         }
@@ -163,10 +246,6 @@ public final class OpsuchtChatMinecraft {
         ENGINE.reset();
     }
 
-    /**
-     * When a named PN tab is selected, plain text is sent directly to that player.
-     * Explicit slash commands continue to behave normally.
-     */
     public static boolean handleActivePrivateInput(String input, boolean addToRecent) {
         String partner = ENGINE.activePrivatePartner();
         if (partner == null || input == null) {
@@ -191,9 +270,6 @@ public final class OpsuchtChatMinecraft {
         return true;
     }
 
-    /**
-     * Local-only commands. They are consumed before Minecraft sends them to the server.
-     */
     public static boolean handleLocalCommand(String input) {
         String command = input == null ? "" : input.trim();
         if (!command.equalsIgnoreCase("/opschat") && !command.toLowerCase(Locale.ROOT).startsWith("/opschat ")) {
@@ -215,6 +291,11 @@ public final class OpsuchtChatMinecraft {
             boolean enabled = debugCapture().toggle();
             String file = debugCapture().outputFile().toAbsolutePath().toString();
             showOverlay(enabled ? "Opsucht Chat Debug AN: " + file : "Opsucht Chat Debug AUS");
+            return true;
+        }
+
+        if (parts[1].equalsIgnoreCase("pn") && parts.length >= 3) {
+            selectPrivatePartner(parts[2]);
             return true;
         }
 
@@ -274,13 +355,59 @@ public final class OpsuchtChatMinecraft {
 
     private static DebugCapture debugCapture() {
         if (debugCapture == null) {
-            Minecraft minecraft = Minecraft.getInstance();
-            Path root = minecraft != null && minecraft.gameDirectory != null
-                    ? minecraft.gameDirectory.toPath()
-                    : Path.of(".");
-            debugCapture = new DebugCapture(root.resolve("opsucht-chat").resolve("debug-chat.jsonl"));
+            debugCapture = new DebugCapture(opsuchtDataDir().resolve("debug-chat.jsonl"));
         }
         return debugCapture;
+    }
+
+    private static Path opsuchtDataDir() {
+        Minecraft minecraft = Minecraft.getInstance();
+        Path root = minecraft != null && minecraft.gameDirectory != null
+                ? minecraft.gameDirectory.toPath()
+                : Path.of(".");
+        return root.resolve("opsucht-chat");
+    }
+
+    private static Path pinnedFile() {
+        return opsuchtDataDir().resolve("pinned-pn.txt");
+    }
+
+    private static void loadPinnedPartners() {
+        if (pinsLoaded) {
+            return;
+        }
+        pinsLoaded = true;
+
+        Path file = pinnedFile();
+        if (!Files.isRegularFile(file)) {
+            return;
+        }
+
+        try {
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                String player = line.trim();
+                if (player.matches("[A-Za-z0-9_.~-]{1,32}")) {
+                    ENGINE.restorePinnedPrivatePartner(player);
+                }
+            }
+        } catch (IOException ignored) {
+            // Local favorites are convenience state; a read failure must never break chat.
+        }
+    }
+
+    private static void savePinnedPartners() {
+        try {
+            Files.createDirectories(opsuchtDataDir());
+            Files.write(
+                    pinnedFile(),
+                    ENGINE.pinnedPrivatePartners(),
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING
+            );
+        } catch (IOException ignored) {
+            // Same rule as debug logging: local persistence must never break chat.
+        }
     }
 
     private static void refreshChatView() {
