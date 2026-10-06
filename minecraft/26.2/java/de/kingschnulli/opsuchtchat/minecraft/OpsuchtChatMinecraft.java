@@ -9,12 +9,17 @@ import de.kingschnulli.opsuchtchat.core.DebugCapture;
 import de.kingschnulli.opsuchtchat.core.PrivateConversation;
 import de.kingschnulli.opsuchtchat.core.PrivateMessageDirection;
 import de.kingschnulli.opsuchtchat.core.PrivateMessageEntry;
+import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
+import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
 import de.kingschnulli.opsuchtchat.core.server.ChatServerAdapter;
 import de.kingschnulli.opsuchtchat.core.server.ServerAdapterRegistry;
 import de.kingschnulli.opsuchtchat.core.social.LocalSocialStore;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -44,9 +49,12 @@ public final class OpsuchtChatMinecraft {
     private static final int SIDEBAR_MAX_WIDTH = 88;
     private static final int SIDEBAR_MIN_WIDTH = 68;
     private static final int MESSAGE_BOTTOM_GAP = 42;
+    private static final int MAX_FEED_MESSAGES = 800;
 
     private static final Map<GuiMessage, Classification> CLASSIFICATIONS =
             Collections.synchronizedMap(new WeakHashMap<>());
+    private static final List<ChatViewMessage> FEED =
+            Collections.synchronizedList(new ArrayList<>());
 
     private static ChatEngine engine;
     private static ChatServerAdapter adapter;
@@ -275,6 +283,24 @@ public final class OpsuchtChatMinecraft {
         CLASSIFICATIONS.put(message, classification);
         debugCapture().append(envelope, classification);
 
+        PublicChatLine publicChat = adapter.parsePublicChat(message.content().getString());
+        ServerFeedEvent serverEvent = classification.category() == ChatCategory.SERVER
+                ? adapter.parseServerEvent(message.content().getString())
+                : null;
+        AuctionFeedEvent auctionEvent = classification.category() == ChatCategory.AUCTION
+                ? adapter.parseAuctionEvent(message.content().getString())
+                : null;
+
+        FEED.add(new ChatViewMessage(
+                envelope.receivedAt(),
+                message,
+                classification,
+                publicChat,
+                serverEvent,
+                auctionEvent
+        ));
+        trimFeed();
+
         if (classification.category() == ChatCategory.PRIVATE && classification.privatePartner() != null) {
             learnAliasesForCanonical(classification.privatePartner());
         }
@@ -391,6 +417,33 @@ public final class OpsuchtChatMinecraft {
         return engine == null || partner == null ? List.of() : engine.privateMessages(partner);
     }
 
+    public static List<PrivateMessageEntry> importantPrivateMessages() {
+        if (engine == null || socialStore == null) {
+            return List.of();
+        }
+
+        return engine.allPrivateMessages().stream()
+                .filter(socialStore::isImportant)
+                .sorted(Comparator.comparing(PrivateMessageEntry::receivedAt))
+                .toList();
+    }
+
+    public static List<ChatViewMessage> visibleFeedMessages() {
+        if (engine == null) {
+            return List.of();
+        }
+
+        ChatCategory active = engine.activeCategory();
+        synchronized (FEED) {
+            if (active == ChatCategory.ALL) {
+                return List.copyOf(FEED);
+            }
+            return FEED.stream()
+                    .filter(entry -> entry.classification().category() == active)
+                    .toList();
+        }
+    }
+
     public static String resolvedPrivateTarget(String displayedName) {
         return resolvePrivateTarget(displayedName);
     }
@@ -465,6 +518,7 @@ public final class OpsuchtChatMinecraft {
 
     public static void onChatCleared() {
         CLASSIFICATIONS.clear();
+        FEED.clear();
         if (engine != null) {
             engine.resetTransientState();
         }
@@ -607,6 +661,7 @@ public final class OpsuchtChatMinecraft {
 
         activeServerAddress = address;
         CLASSIFICATIONS.clear();
+        FEED.clear();
 
         adapter = ServerAdapterRegistry.resolve(address);
         engine = adapter == null ? null : new ChatEngine(adapter);
@@ -713,6 +768,15 @@ public final class OpsuchtChatMinecraft {
 
     private static String serverIdentityBase(String value) {
         return adapter == null ? (value == null ? "" : value.trim().toLowerCase(Locale.ROOT)) : adapter.identityBase(value);
+    }
+
+    private static void trimFeed() {
+        synchronized (FEED) {
+            int overflow = FEED.size() - MAX_FEED_MESSAGES;
+            if (overflow > 0) {
+                FEED.subList(0, overflow).clear();
+            }
+        }
     }
 
     private static void saveFavorites() {
