@@ -1,0 +1,4 @@
+allprojects {
+    group = providers.gradleProperty('maven_group').get()
+    version = providers.environmentVariable('VERSION').getOrElse(providers.gradleProperty('mod_version').get())
+}

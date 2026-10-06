@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Core tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@5e2ebd065dc2488b7a6ad670704656cbbe1e8f60 # v6.1.1
+        with:
+          gradle-version: '9.2.1'
+
+      - name: Test core
+        run: gradle --no-daemon --configure-on-demand :core:test
+
+  fabric:
+    name: Fabric 26.2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle for Fabric Loom
+        uses: gradle/actions/setup-gradle@5e2ebd065dc2488b7a6ad670704656cbbe1e8f60 # v6.1.1
+        with:
+          gradle-version: '9.7.1'
+
+      - name: Build Fabric
+        run: gradle --no-daemon --configure-on-demand :platforms:fabric:build
+
+      - name: Upload Fabric build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fabric
+          path: |
+            platforms/fabric/build/libs/*.jar
+            !platforms/fabric/build/libs/*-sources.jar
+            !platforms/fabric/build/libs/*-dev.jar
+          if-no-files-found: error
+
+  neoforge:
+    name: NeoForge 26.2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle for NeoForge
+        uses: gradle/actions/setup-gradle@5e2ebd065dc2488b7a6ad670704656cbbe1e8f60 # v6.1.1
+        with:
+          gradle-version: '9.2.1'
+
+      - name: Build NeoForge
+        run: gradle --no-daemon --configure-on-demand :platforms:neoforge:build
+
+      - name: Upload NeoForge build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: neoforge
+          path: |
+            platforms/neoforge/build/libs/*.jar
+            !platforms/neoforge/build/libs/*-sources.jar
+          if-no-files-found: error

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "opsucht_chat",
+  "version": "${version}",
+  "name": "Opsucht Chat",
+  "description": "A small client-side chat organizer for opsucht.net.",
+  "authors": ["kingschnulli community"],
+  "contact": {
+    "sources": "https://github.com/kingschnulli/opsucht-chat",
+    "issues": "https://github.com/kingschnulli/opsucht-chat/issues"
+  },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "de.kingschnulli.opsuchtchat.fabric.OpsuchtChatFabricClient"
+    ]
+  },
+  "mixins": [
+    "opsucht-chat.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.2",
+    "java": ">=25"
+  }
+}
