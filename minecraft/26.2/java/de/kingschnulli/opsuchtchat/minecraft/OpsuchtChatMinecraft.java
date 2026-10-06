@@ -45,10 +45,12 @@ public final class OpsuchtChatMinecraft {
     private static final String OPEN_PRIVATE_PREFIX = "/opschat pn ";
 
     private static final int FRAME_X = 5;
-    private static final int FRAME_MAX_WIDTH = 250;
-    private static final int FRAME_MIN_WIDTH = 185;
-    private static final int SIDEBAR_MAX_WIDTH = 88;
-    private static final int SIDEBAR_MIN_WIDTH = 68;
+    private static final int FEED_FRAME_MAX_WIDTH = 250;
+    private static final int FEED_FRAME_MIN_WIDTH = 185;
+    private static final int SOCIAL_FRAME_MAX_WIDTH = 420;
+    private static final int SOCIAL_FRAME_MIN_WIDTH = 300;
+    private static final int SIDEBAR_MAX_WIDTH = 132;
+    private static final int SIDEBAR_MIN_WIDTH = 104;
     private static final int MESSAGE_BOTTOM_GAP = 42;
     private static final int MAX_FEED_MESSAGES = 800;
 
@@ -113,12 +115,15 @@ public final class OpsuchtChatMinecraft {
     public static int frameWidth() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null) {
-            return FRAME_MAX_WIDTH;
+            return activeCategory() == ChatCategory.PRIVATE ? SOCIAL_FRAME_MAX_WIDTH : FEED_FRAME_MAX_WIDTH;
         }
 
         int screenWidth = minecraft.getWindow().getGuiScaledWidth();
-        int preferred = (int)Math.round(screenWidth * 0.36);
-        preferred = Math.max(FRAME_MIN_WIDTH, Math.min(FRAME_MAX_WIDTH, preferred));
+        boolean social = activeCategory() == ChatCategory.PRIVATE;
+        int preferred = (int)Math.round(screenWidth * (social ? 0.58 : 0.36));
+        int min = social ? SOCIAL_FRAME_MIN_WIDTH : FEED_FRAME_MIN_WIDTH;
+        int max = social ? SOCIAL_FRAME_MAX_WIDTH : FEED_FRAME_MAX_WIDTH;
+        preferred = Math.max(min, Math.min(max, preferred));
         return Math.max(170, Math.min(screenWidth - FRAME_X * 2, preferred));
     }
 
@@ -137,8 +142,9 @@ public final class OpsuchtChatMinecraft {
         }
 
         int screenHeight = minecraft.getWindow().getGuiScaledHeight();
-        int target = (int)Math.round(screenHeight * 0.38);
-        int max = Math.max(78, Math.min(125, screenHeight - 92));
+        boolean social = activeCategory() == ChatCategory.PRIVATE;
+        int target = (int)Math.round(screenHeight * (social ? 0.56 : 0.38));
+        int max = Math.max(78, Math.min(social ? 190 : 125, screenHeight - 92));
         return Math.max(78, Math.min(max, target));
     }
 
