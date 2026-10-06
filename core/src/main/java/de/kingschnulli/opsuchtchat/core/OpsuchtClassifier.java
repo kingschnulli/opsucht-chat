@@ -39,58 +39,83 @@ public final class OpsuchtClassifier {
             "\\baktuell(?:es)?\\s+gebot\\b"
     );
 
+    /**
+     * Opsucht player auctions are mostly plain chat. Once an auction is active,
+     * bidders often send only a number ("2100", "2108$"), while the seller counts
+     * down with "2108 zum ersten/zweiten/dritten".
+     */
+    private static final List<Pattern> AUCTION_ACTIVE_BID_PATTERNS = patterns(
+            "^\\s*\\d[\\d.,]*\\s*(?:\\$|dollar|k|kk|m|mio\\.?|b)?\\s*$",
+            "^\\s*(?:und\\s+)?\\d[\\d.,]*\\s*(?:\\$|dollar|k|kk|m|mio\\.?|b)?\\s+zum\\s+(?:ersten|zweiten)\\b.*$",
+            "\\bzum\\s+(?:ersten|zweiten)\\b"
+    );
+
     private static final List<Pattern> AUCTION_END_PATTERNS = patterns(
             "\\b(?:wurde|ist)\\s+.*\\bverkauft\\b",
             "\\bverkauft\\s+an\\b",
             "\\b(?:ersteigert|ersteigerte|gewonnen)\\b",
             "\\b(?:auktion|versteigerung)\\s+(?:beendet|abgelaufen|vorbei)\\b",
-            "\\bkeine?n?\\s+gebote?\\b"
+            "\\bkeine?n?\\s+gebote?\\b",
+            "\\bzum\\s+dritten\\b",
+            "\\bzum\\s+3\\.?(?:ten)?\\b"
     );
 
     private static final List<Pattern> ADVERTISING_PATTERNS = patterns(
             "^\\s*\\[(?:werbung|advertisement|shop)]",
             "^\\s*(?:werbung|advertisement|shop)\\s*[|»>:]",
-            "\\bwerbeanzeige\\b"
+            "\\bwerbeanzeige\\b",
+            "\\bmega\\s+sale\\b",
+            "(?:^|\\s)/(?:sw|shop)\\b",
+            "\\bverkaufe\\b.*(?:\\b(?:für|fuer|msg|angebot|inventar)\\b|/msg)",
+            "^\\s*verkaufe\\s+mein\\s+inventar\\b",
+            "\\bverkauft\\s+wer\\b",
+            "\\bbei\\s+int(?:e)?resse\\b.*(?:/msg|\\bmsg\\b)"
     );
 
     private static final List<Pattern> SERVER_PREFIX_PATTERNS = patterns(
-            "^\\s*\\[(?:server|system|netzwerk|network|discord)]",
-            "^\\s*(?:server|system|netzwerk|network|discord)\\s*[|»>:]"
+            "^\\s*\\[(?:server|system|netzwerk|network|discord|opsucht)]",
+            "^\\s*(?:server|system|netzwerk|network|discord|opsucht)\\s*[|»>:]",
+            "^\\s*freunde\\s*[»>]\\s*\\[\\s*opsucht\\s*(?:->|→)\\s*mir\\s*]"
     );
 
     private Instant auctionActiveUntil = Instant.EPOCH;
 
     public Classification classify(ChatEnvelope message) {
         String text = TextNormalizer.normalize(message.text());
+        String playerContent = playerContent(text);
         Instant now = message.receivedAt();
+
+        // Official Opsucht announcements can deliberately look like a private
+        // message ("FREUNDE » [OPSUCHT -> Mir]"). Keep those in SERVER, not PN.
+        if (matchesAny(SERVER_PREFIX_PATTERNS, text)) {
+            return new Classification(ChatCategory.SERVER, "server.prefix");
+        }
 
         if (matchesAny(PRIVATE_PATTERNS, text)) {
             return new Classification(ChatCategory.PRIVATE, "private.explicit");
         }
 
         boolean auctionPrefixed = matchesAny(AUCTION_PREFIX_PATTERNS, text);
-        boolean auctionStart = auctionPrefixed || matchesAny(AUCTION_START_PATTERNS, text);
+        boolean auctionStart = auctionPrefixed || matchesAny(AUCTION_START_PATTERNS, playerContent);
         if (auctionStart) {
             openAuction(now);
             return new Classification(ChatCategory.AUCTION, auctionPrefixed ? "auction.prefix" : "auction.start");
         }
 
-        if (isAuctionActive(now) && matchesAny(AUCTION_BID_PATTERNS, text)) {
-            extendAuction(now);
-            return new Classification(ChatCategory.AUCTION, "auction.bid");
-        }
-
-        if (isAuctionActive(now) && matchesAny(AUCTION_END_PATTERNS, text)) {
+        if (isAuctionActive(now) && matchesAny(AUCTION_END_PATTERNS, playerContent)) {
             closeAuction();
             return new Classification(ChatCategory.AUCTION, "auction.end");
         }
 
-        if (matchesAny(ADVERTISING_PATTERNS, text)) {
-            return new Classification(ChatCategory.ADVERTISING, "advertising.explicit");
+        if (isAuctionActive(now)
+                && (matchesAny(AUCTION_BID_PATTERNS, playerContent)
+                || matchesAny(AUCTION_ACTIVE_BID_PATTERNS, playerContent))) {
+            extendAuction(now);
+            return new Classification(ChatCategory.AUCTION, "auction.bid");
         }
 
-        if (matchesAny(SERVER_PREFIX_PATTERNS, text)) {
-            return new Classification(ChatCategory.SERVER, "server.prefix");
+        if (matchesAny(ADVERTISING_PATTERNS, playerContent)) {
+            return new Classification(ChatCategory.ADVERTISING, "advertising.player");
         }
 
         return Classification.all("fallback.all");
@@ -102,18 +127,19 @@ public final class OpsuchtClassifier {
      */
     public Classification classifyStateless(ChatEnvelope message) {
         String text = TextNormalizer.normalize(message.text());
+        String playerContent = playerContent(text);
 
+        if (matchesAny(SERVER_PREFIX_PATTERNS, text)) {
+            return new Classification(ChatCategory.SERVER, "server.prefix");
+        }
         if (matchesAny(PRIVATE_PATTERNS, text)) {
             return new Classification(ChatCategory.PRIVATE, "private.explicit");
         }
-        if (matchesAny(AUCTION_PREFIX_PATTERNS, text) || matchesAny(AUCTION_START_PATTERNS, text)) {
+        if (matchesAny(AUCTION_PREFIX_PATTERNS, text) || matchesAny(AUCTION_START_PATTERNS, playerContent)) {
             return new Classification(ChatCategory.AUCTION, "auction.stateless");
         }
-        if (matchesAny(ADVERTISING_PATTERNS, text)) {
-            return new Classification(ChatCategory.ADVERTISING, "advertising.explicit");
-        }
-        if (matchesAny(SERVER_PREFIX_PATTERNS, text)) {
-            return new Classification(ChatCategory.SERVER, "server.prefix");
+        if (matchesAny(ADVERTISING_PATTERNS, playerContent)) {
+            return new Classification(ChatCategory.ADVERTISING, "advertising.player");
         }
         return Classification.all("fallback.all");
     }
@@ -140,6 +166,23 @@ public final class OpsuchtClassifier {
 
     private void closeAuction() {
         auctionActiveUntil = Instant.EPOCH;
+    }
+
+    /**
+     * Removes the rank/name prefix from a normal player chat line while leaving
+     * non-player/system formats untouched. Wrapped chat messages often look like:
+     * "» PLATIN | Name » message »".
+     */
+    private static String playerContent(String text) {
+        String value = text.trim();
+        if (value.endsWith("»")) {
+            value = value.substring(0, value.length() - 1).trim();
+        }
+        int separator = value.lastIndexOf('»');
+        if (separator >= 0) {
+            return value.substring(separator + 1).trim();
+        }
+        return value;
     }
 
     private static boolean matchesAny(List<Pattern> patterns, String text) {
