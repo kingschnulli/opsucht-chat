@@ -7,7 +7,9 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
@@ -124,7 +126,7 @@ public abstract class ChatScreenMixin extends Screen {
 
     @Unique
     private void opsuchtChat$addPrivateButtons() {
-        int y = this.height - 47;
+        int y = opsuchtChat$privateTabsY();
 
         for (int i = 0; i < PRIVATE_TAB_SLOTS; i++) {
             final int slot = i;
@@ -190,7 +192,10 @@ public abstract class ChatScreenMixin extends Screen {
     @Unique
     private void opsuchtChat$refreshPrivateButtons() {
         List<PrivateConversation> conversations = OpsuchtChatMinecraft.recentPrivateConversations();
-        int maxVisible = Math.min(PRIVATE_TAB_SLOTS, Math.max(1, (this.width - 4) / PRIVATE_SLOT_WIDTH));
+        int maxVisible = Math.min(
+                PRIVATE_TAB_SLOTS,
+                Math.max(1, opsuchtChat$chatPixelWidth() / PRIVATE_SLOT_WIDTH)
+        );
 
         for (int i = 0; i < PRIVATE_TAB_SLOTS; i++) {
             Button nameButton = opsuchtChat$privateNameButtons[i];
@@ -218,6 +223,34 @@ public abstract class ChatScreenMixin extends Screen {
                 closeButton.visible = false;
             }
         }
+    }
+
+    @Unique
+    private int opsuchtChat$privateTabsY() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            return Math.max(2, this.height - 63);
+        }
+
+        double scale = minecraft.options.chatScale().get();
+        int focusedChatHeight = ChatComponent.getHeight(minecraft.options.chatHeightFocused().get());
+        int chatTop = this.height - 40 - (int)Math.ceil(focusedChatHeight * scale);
+
+        // The PN strip lives outside the vanilla message viewport instead of
+        // consuming one of the visible chat lines.
+        return Math.max(2, chatTop - 15);
+    }
+
+    @Unique
+    private int opsuchtChat$chatPixelWidth() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            return this.width - 4;
+        }
+
+        double scale = minecraft.options.chatScale().get();
+        int chatWidth = ChatComponent.getWidth(minecraft.options.chatWidth().get());
+        return Math.max(PRIVATE_SLOT_WIDTH, (int)Math.ceil((chatWidth + 8) * scale));
     }
 
     /**
