@@ -193,6 +193,12 @@ class OpsuchtClassifierTest {
                 ChatSource.PLAYER,
                 "»\nPLATIN | KenjiTheWerwolf » Verkauft wer ein großes merge\n»"
         )).category());
+
+        assertEquals(ChatCategory.ADVERTISING, classifier.classify(new ChatEnvelope(
+                now.plusSeconds(4),
+                ChatSource.PLAYER,
+                "»\nPLATIN | Skiyl » Sicher dir jetzt deine Deals -> /ah Skiyl\n»"
+        )).category());
     }
 
     @Test
