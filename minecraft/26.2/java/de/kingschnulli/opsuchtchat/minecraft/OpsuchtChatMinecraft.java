@@ -37,7 +37,7 @@ import net.minecraft.network.chat.Style;
 public final class OpsuchtChatMinecraft {
     private static final String OPEN_PRIVATE_PREFIX = "/opschat pn ";
     private static final Pattern PLAYER_CHAT_NAME = Pattern.compile(
-            "(?m)(?:^|\\n)[^|\\n]+\\|\\s*([A-Za-z0-9_.~-]{1,32})\\s*»"
+            "(?m)(?:^|\\n)[^|\\n]+\\|\\s*(.+?)\\s*»"
     );
 
     private static final int FRAME_X = 6;
@@ -188,7 +188,14 @@ public final class OpsuchtChatMinecraft {
             return contents;
         }
 
-        String player = matcher.group(1);
+        String rawPlayer = matcher.group(1);
+        String player = rawPlayer
+                .replaceAll("(?i)§[0-9A-FK-ORX]", "")
+                .trim();
+        if (!player.matches("[A-Za-z0-9_.~-]{1,32}")) {
+            return contents;
+        }
+
         int targetStart = matcher.start(1);
         int targetEnd = matcher.end(1);
         MutableComponent result = Component.empty();
