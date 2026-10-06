@@ -11,13 +11,18 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Tiny dependency-free local social store.
  *
  * Data is deliberately server-adapter scoped so a future second server cannot
- * accidentally mix identities or private-message history with Opsucht.
+ * accidentally mix identities or private-message history with another server.
  */
 public final class LocalSocialStore {
     private static final long COMPACT_AFTER_BYTES = 4L * 1024L * 1024L;
@@ -26,11 +31,15 @@ public final class LocalSocialStore {
     private final Path directory;
     private final Path favoritesFile;
     private final Path privateHistoryFile;
+    private final Path aliasesFile;
+    private final Path importantMessagesFile;
 
     public LocalSocialStore(Path rootDirectory, String adapterId) {
         this.directory = rootDirectory.resolve("social").resolve(sanitize(adapterId));
         this.favoritesFile = directory.resolve("favorites.txt");
         this.privateHistoryFile = directory.resolve("private-messages.tsv");
+        this.aliasesFile = directory.resolve("aliases.tsv");
+        this.importantMessagesFile = directory.resolve("important-private.txt");
     }
 
     public List<String> loadFavorites() {
@@ -123,8 +132,111 @@ public final class LocalSocialStore {
         }
     }
 
+    public Map<String, String> loadAliases() {
+        if (!Files.isRegularFile(aliasesFile)) {
+            return Map.of();
+        }
+
+        try {
+            Map<String, String> result = new LinkedHashMap<>();
+            for (String line : Files.readAllLines(aliasesFile, StandardCharsets.UTF_8)) {
+                String[] parts = line.split("\t", 2);
+                if (parts.length != 2) {
+                    continue;
+                }
+
+                try {
+                    String alias = decode(parts[0]);
+                    String canonical = decode(parts[1]);
+                    if (!alias.isBlank() && !canonical.isBlank()) {
+                        result.put(identityKey(alias), canonical);
+                    }
+                } catch (RuntimeException ignored) {
+                    // Ignore a damaged line and preserve the rest of the directory.
+                }
+            }
+            return Map.copyOf(result);
+        } catch (IOException ignored) {
+            return Map.of();
+        }
+    }
+
+    public void saveAlias(String alias, String canonical) {
+        if (alias == null || canonical == null || alias.isBlank() || canonical.isBlank()) {
+            return;
+        }
+
+        Map<String, String> aliases = new LinkedHashMap<>(loadAliases());
+        aliases.put(identityKey(alias), canonical.trim());
+
+        try {
+            Files.createDirectories(directory);
+            List<String> lines = aliases.entrySet().stream()
+                    .map(entry -> encode(entry.getKey()) + "\t" + encode(entry.getValue()))
+                    .toList();
+            Files.write(
+                    aliasesFile,
+                    lines,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING
+            );
+        } catch (IOException ignored) {
+            // Identity hints are optional convenience state.
+        }
+    }
+
+    public Set<String> loadImportantMessageKeys() {
+        if (!Files.isRegularFile(importantMessagesFile)) {
+            return Set.of();
+        }
+
+        try {
+            return Set.copyOf(new LinkedHashSet<>(Files.readAllLines(importantMessagesFile, StandardCharsets.UTF_8)));
+        } catch (IOException ignored) {
+            return Set.of();
+        }
+    }
+
+    public boolean setImportant(PrivateMessageEntry message, boolean important) {
+        Set<String> keys = new LinkedHashSet<>(loadImportantMessageKeys());
+        String key = privateMessageKey(message);
+        boolean changed = important ? keys.add(key) : keys.remove(key);
+
+        if (!changed) {
+            return important;
+        }
+
+        try {
+            Files.createDirectories(directory);
+            Files.write(
+                    importantMessagesFile,
+                    keys,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING
+            );
+        } catch (IOException ignored) {
+            return !important;
+        }
+
+        return important;
+    }
+
+    public boolean isImportant(PrivateMessageEntry message) {
+        return loadImportantMessageKeys().contains(privateMessageKey(message));
+    }
+
     public Path directory() {
         return directory;
+    }
+
+    public static String privateMessageKey(PrivateMessageEntry message) {
+        String raw = message.receivedAt().toEpochMilli()
+                + "|" + message.direction().name()
+                + "|" + identityKey(message.partner())
+                + "|" + message.body();
+        return encode(raw);
     }
 
     private void compactIfNeeded() throws IOException {
@@ -143,7 +255,7 @@ public final class LocalSocialStore {
     }
 
     private static PrivateMessageEntry parse(String line) {
-        String[] parts = line.split("\\t", 4);
+        String[] parts = line.split("\t", 4);
         if (parts.length != 4) {
             return null;
         }
@@ -158,6 +270,10 @@ public final class LocalSocialStore {
         } catch (RuntimeException ignored) {
             return null;
         }
+    }
+
+    private static String identityKey(String value) {
+        return value.trim().toLowerCase(Locale.ROOT);
     }
 
     private static String encode(String value) {
