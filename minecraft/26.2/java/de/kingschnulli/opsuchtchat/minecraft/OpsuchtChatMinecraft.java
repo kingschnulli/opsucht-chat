@@ -447,6 +447,20 @@ public final class OpsuchtChatMinecraft {
         return resolvePrivateTarget(displayedName);
     }
 
+    public static Component publicBodyComponent(ChatViewMessage entry) {
+        if (entry == null || adapter == null || entry.publicChat() == null) {
+            return entry == null ? Component.empty() : entry.message().content();
+        }
+
+        String plain = entry.message().content().getString();
+        TextRange range = adapter.publicBodyRange(plain);
+        if (range == null) {
+            return Component.literal(entry.publicChat().body());
+        }
+
+        return sliceComponent(entry.message().content(), range.start(), range.end());
+    }
+
     public static PlayerInfo playerInfo(String playerName) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.getConnection() == null || playerName == null) {
@@ -767,6 +781,36 @@ public final class OpsuchtChatMinecraft {
 
     private static String serverIdentityBase(String value) {
         return adapter == null ? (value == null ? "" : value.trim().toLowerCase(Locale.ROOT)) : adapter.identityBase(value);
+    }
+
+    private static Component sliceComponent(Component source, int start, int end) {
+        if (start < 0 || end < start) {
+            return source;
+        }
+
+        MutableComponent result = Component.empty();
+        int cursor = 0;
+
+        for (Component part : source.toFlatList()) {
+            String text = part.getString();
+            int partStart = cursor;
+            int partEnd = cursor + text.length();
+
+            if (partEnd <= start || partStart >= end) {
+                cursor = partEnd;
+                continue;
+            }
+
+            int localStart = Math.max(0, start - partStart);
+            int localEnd = Math.min(text.length(), end - partStart);
+            if (localEnd > localStart) {
+                result.append(Component.literal(text.substring(localStart, localEnd)).withStyle(part.getStyle()));
+            }
+
+            cursor = partEnd;
+        }
+
+        return result.getString().isEmpty() ? source : result;
     }
 
     private static void trimFeed() {
