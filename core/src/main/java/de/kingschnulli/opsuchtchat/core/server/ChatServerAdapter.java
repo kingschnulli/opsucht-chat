@@ -46,6 +46,10 @@ public interface ChatServerAdapter {
         return null;
     }
 
+    default TextRange publicBodyRange(String text) {
+        return null;
+    }
+
     default ServerFeedEvent parseServerEvent(String text) {
         return null;
     }
