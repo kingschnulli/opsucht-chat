@@ -111,6 +111,28 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
     }
 
     @Override
+    public TextRange publicBodyRange(String text) {
+        if (text == null) {
+            return null;
+        }
+
+        Matcher matcher = PUBLIC_CHAT.matcher(text);
+        if (!matcher.matches()) {
+            return null;
+        }
+
+        int start = matcher.start(3);
+        int end = matcher.end(3);
+        while (start < end && Character.isWhitespace(text.charAt(start))) {
+            start++;
+        }
+        while (end > start && Character.isWhitespace(text.charAt(end - 1))) {
+            end--;
+        }
+        return new TextRange(start, end);
+    }
+
+    @Override
     public ServerFeedEvent parseServerEvent(String text) {
         String cleaned = clean(text);
         if (cleaned.isBlank()) {
