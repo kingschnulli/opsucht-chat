@@ -5,6 +5,7 @@ import de.kingschnulli.opsuchtchat.core.Classification;
 import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
 import java.util.Locale;
 
 /**
@@ -38,6 +39,10 @@ public interface ChatServerAdapter {
     }
 
     default PublicChatLine parsePublicChat(String text) {
+        return null;
+    }
+
+    default TextRange publicPlayerRange(String text) {
         return null;
     }
 
