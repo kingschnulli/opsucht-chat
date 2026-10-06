@@ -33,6 +33,7 @@ public final class LocalSocialStore {
     private final Path privateHistoryFile;
     private final Path aliasesFile;
     private final Path importantMessagesFile;
+    private final Path closedConversationsFile;
 
     public LocalSocialStore(Path rootDirectory, String adapterId) {
         this.directory = rootDirectory.resolve("social").resolve(sanitize(adapterId));
@@ -40,6 +41,7 @@ public final class LocalSocialStore {
         this.privateHistoryFile = directory.resolve("private-messages.tsv");
         this.aliasesFile = directory.resolve("aliases.tsv");
         this.importantMessagesFile = directory.resolve("important-private.txt");
+        this.closedConversationsFile = directory.resolve("closed-conversations.txt");
     }
 
     public List<String> loadFavorites() {
@@ -129,6 +131,66 @@ public final class LocalSocialStore {
             return List.copyOf(result);
         } catch (IOException ignored) {
             return List.of();
+        }
+    }
+
+    public List<PrivateMessageEntry> loadPrivateMessagesForPartner(String partner, int maxEntries) {
+        if (partner == null || partner.isBlank() || maxEntries <= 0) {
+            return List.of();
+        }
+
+        String key = identityKey(partner);
+        List<PrivateMessageEntry> matches = loadPrivateMessages(COMPACT_KEEP_LINES).stream()
+                .filter(message -> identityKey(message.partner()).equals(key))
+                .toList();
+
+        int start = Math.max(0, matches.size() - maxEntries);
+        return List.copyOf(matches.subList(start, matches.size()));
+    }
+
+    public Set<String> loadClosedConversations() {
+        if (!Files.isRegularFile(closedConversationsFile)) {
+            return Set.of();
+        }
+
+        try {
+            Set<String> result = new LinkedHashSet<>();
+            for (String line : Files.readAllLines(closedConversationsFile, StandardCharsets.UTF_8)) {
+                String value = line.trim();
+                if (!value.isEmpty()) {
+                    result.add(identityKey(value));
+                }
+            }
+            return Set.copyOf(result);
+        } catch (IOException ignored) {
+            return Set.of();
+        }
+    }
+
+    public void setConversationClosed(String partner, boolean closed) {
+        if (partner == null || partner.isBlank()) {
+            return;
+        }
+
+        Set<String> values = new LinkedHashSet<>(loadClosedConversations());
+        String key = identityKey(partner);
+        if (closed) {
+            values.add(key);
+        } else {
+            values.remove(key);
+        }
+
+        try {
+            Files.createDirectories(directory);
+            Files.write(
+                    closedConversationsFile,
+                    values,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING
+            );
+        } catch (IOException ignored) {
+            // Closing a visual conversation must never interfere with live chat.
         }
     }
 
