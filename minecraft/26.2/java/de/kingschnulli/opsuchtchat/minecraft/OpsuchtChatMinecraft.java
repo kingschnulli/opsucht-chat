@@ -12,6 +12,7 @@ import de.kingschnulli.opsuchtchat.core.PrivateMessageEntry;
 import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
 import de.kingschnulli.opsuchtchat.core.server.ChatServerAdapter;
 import de.kingschnulli.opsuchtchat.core.server.ServerAdapterRegistry;
 import de.kingschnulli.opsuchtchat.core.social.LocalSocialStore;
@@ -202,20 +203,12 @@ public final class OpsuchtChatMinecraft {
         observedPublicAliases.put(serverIdentityBase(player), player);
         String privateTarget = resolvePrivateTarget(player);
 
-        int targetStart = plain.indexOf(player);
-        if (targetStart < 0) {
-            String colorless = plain.replaceAll("(?i)§[0-9A-FK-ORX]", "");
-            int colorlessIndex = colorless.indexOf(player);
-            if (colorlessIndex < 0) {
-                return contents;
-            }
-
-            // Styled/legacy-colored names may not share the same character offsets.
-            // In that case keep the original component untouched; the identity is still
-            // learned and will resolve through PM/session data.
+        TextRange playerRange = adapter.publicPlayerRange(plain);
+        if (playerRange == null) {
             return contents;
         }
-        int targetEnd = targetStart + player.length();
+        int targetStart = playerRange.start();
+        int targetEnd = playerRange.end();
         MutableComponent result = Component.empty();
         int cursor = 0;
 
