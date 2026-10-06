@@ -16,11 +16,11 @@ public final class OpsuchtClassifier {
     private static final Duration AUCTION_IDLE_TIMEOUT = Duration.ofSeconds(120);
 
     private static final Pattern PRIVATE_INCOMING = Pattern.compile(
-            "\\bfreunde\\s*[»>]\\s*\\[\\s*(.+?)\\s*(?:->|→)\\s*mir\\s*]",
+            "(?s)\\bfreunde\\s*[»>]\\s*\\[\\s*(.+?)\\s*(?:->|→)\\s*mir\\s*]\\s*(.*)$",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
     );
     private static final Pattern PRIVATE_OUTGOING = Pattern.compile(
-            "\\bfreunde\\s*[»>]\\s*\\[\\s*(?:mir|du)\\s*(?:->|→)\\s*(.+?)\\s*]",
+            "(?s)\\bfreunde\\s*[»>]\\s*\\[\\s*(?:mir|du)\\s*(?:->|→)\\s*(.+?)\\s*]\\s*(.*)$",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
     );
 
@@ -50,9 +50,10 @@ public final class OpsuchtClassifier {
     );
 
     private static final List<Pattern> AUCTION_ACTIVE_BID_PATTERNS = patterns(
-            "^\\s*\\d[\\d.,]*\\s*(?:\\$|dollar|k|kk|m|mio\\.?|b)?\\s*$",
-            "^\\s*(?:und\\s+)?\\d[\\d.,]*\\s*(?:\\$|dollar|k|kk|m|mio\\.?|b)?\\s+zum\\s+(?:ersten|zweiten)\\b.*$",
-            "\\bzum\\s+(?:ersten|zweiten)\\b"
+            "^\\s*-?\\d[\\d.,]*\\s*(?:\\$|dollar|k|kk|m|mio\\.?|b)?\\s*$",
+            "^\\s*(?:und\\s+)?-?\\d[\\d.,]*\\s*(?:\\$|dollar|k|kk|m|mio\\.?|b)?\\s+zum\\s+(?:ersten|zweiten|2\\.?)\\b.*$",
+            "\\bzum\\s+(?:ersten|zweiten|2\\.?)\\b",
+            "\\bbiete\\s+-?\\d[\\d.,]*\\s*(?:\\$|k|m)?\\b"
     );
 
     private static final List<Pattern> AUCTION_END_PATTERNS = patterns(
@@ -62,7 +63,8 @@ public final class OpsuchtClassifier {
             "\\b(?:auktion|versteigerung)\\s+(?:beendet|abgelaufen|vorbei)\\b",
             "\\bkeine?n?\\s+gebote?\\b",
             "\\bzum\\s+dritten\\b",
-            "\\bzum\\s+3\\.?(?:ten)?\\b"
+            "\\bzum\\s+3\\.?(?:ten)?\\b",
+            "\\bverkauft\\b"
     );
 
     private static final List<Pattern> ADVERTISING_PATTERNS = patterns(
@@ -96,9 +98,19 @@ public final class OpsuchtClassifier {
             return new Classification(ChatCategory.SERVER, "server.prefix");
         }
 
-        String privatePartner = extractPrivatePartner(cleanText);
-        if (privatePartner != null || matchesAny(PRIVATE_PATTERNS, text)) {
-            return new Classification(ChatCategory.PRIVATE, "private.explicit", privatePartner);
+        PrivateParts privateParts = parsePrivate(cleanText);
+        if (privateParts != null) {
+            return new Classification(
+                    ChatCategory.PRIVATE,
+                    "private.explicit",
+                    privateParts.partner(),
+                    privateParts.direction(),
+                    privateParts.body()
+            );
+        }
+
+        if (matchesAny(PRIVATE_PATTERNS, text)) {
+            return new Classification(ChatCategory.PRIVATE, "private.explicit");
         }
 
         boolean auctionPrefixed = matchesAny(AUCTION_PREFIX_PATTERNS, text);
@@ -136,9 +148,19 @@ public final class OpsuchtClassifier {
             return new Classification(ChatCategory.SERVER, "server.prefix");
         }
 
-        String privatePartner = extractPrivatePartner(cleanText);
-        if (privatePartner != null || matchesAny(PRIVATE_PATTERNS, text)) {
-            return new Classification(ChatCategory.PRIVATE, "private.explicit", privatePartner);
+        PrivateParts privateParts = parsePrivate(cleanText);
+        if (privateParts != null) {
+            return new Classification(
+                    ChatCategory.PRIVATE,
+                    "private.explicit",
+                    privateParts.partner(),
+                    privateParts.direction(),
+                    privateParts.body()
+            );
+        }
+
+        if (matchesAny(PRIVATE_PATTERNS, text)) {
+            return new Classification(ChatCategory.PRIVATE, "private.explicit");
         }
 
         if (matchesAny(AUCTION_PREFIX_PATTERNS, text) || matchesAny(AUCTION_START_PATTERNS, playerContent)) {
@@ -174,15 +196,21 @@ public final class OpsuchtClassifier {
         auctionActiveUntil = Instant.EPOCH;
     }
 
-    private static String extractPrivatePartner(String cleanText) {
+    private static PrivateParts parsePrivate(String cleanText) {
         Matcher incoming = PRIVATE_INCOMING.matcher(cleanText);
         if (incoming.find()) {
-            return normalizePrivatePartner(incoming.group(1));
+            String partner = normalizePrivatePartner(incoming.group(1));
+            if (partner != null) {
+                return new PrivateParts(partner, PrivateMessageDirection.INCOMING, incoming.group(2).trim());
+            }
         }
 
         Matcher outgoing = PRIVATE_OUTGOING.matcher(cleanText);
         if (outgoing.find()) {
-            return normalizePrivatePartner(outgoing.group(1));
+            String partner = normalizePrivatePartner(outgoing.group(1));
+            if (partner != null) {
+                return new PrivateParts(partner, PrivateMessageDirection.OUTGOING, outgoing.group(2).trim());
+            }
         }
 
         return null;
@@ -204,7 +232,7 @@ public final class OpsuchtClassifier {
             value = value.substring(space + 1).trim();
         }
 
-        if (value.equalsIgnoreCase("mir") || value.equalsIgnoreCase("opsucht")) {
+        if (value.equalsIgnoreCase("mir") || value.equalsIgnoreCase("du") || value.equalsIgnoreCase("opsucht")) {
             return null;
         }
 
@@ -236,5 +264,12 @@ public final class OpsuchtClassifier {
         return java.util.Arrays.stream(regexes)
                 .map(regex -> Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE))
                 .toList();
+    }
+
+    private record PrivateParts(
+            String partner,
+            PrivateMessageDirection direction,
+            String body
+    ) {
     }
 }

@@ -12,7 +12,7 @@ class OpsuchtChatEngineTest {
     private final Instant now = Instant.parse("2026-10-06T18:00:00Z");
 
     @Test
-    void privateUnreadCounterResetsWhenAggregatePnTabIsOpened() {
+    void openingPnSelectsMostRecentConversationWithoutClearingOthers() {
         OpsuchtChatEngine engine = new OpsuchtChatEngine();
 
         engine.onIncoming(new ChatEnvelope(
@@ -29,11 +29,12 @@ class OpsuchtChatEngineTest {
         assertEquals(2, engine.unread(ChatCategory.PRIVATE));
 
         engine.select(ChatCategory.PRIVATE);
-        assertEquals(0, engine.unread(ChatCategory.PRIVATE));
+        assertEquals("OtherUser", engine.activePrivatePartner());
+        assertEquals(1, engine.unread(ChatCategory.PRIVATE));
     }
 
     @Test
-    void recentPrivateConversationsArePerPlayerAndMostRecentFirst() {
+    void transcriptKeepsDirectionBodyAndPreview() {
         OpsuchtChatEngine engine = new OpsuchtChatEngine();
 
         engine.onIncoming(new ChatEnvelope(
@@ -44,19 +45,19 @@ class OpsuchtChatEngineTest {
         engine.onIncoming(new ChatEnvelope(
                 now.plusSeconds(1),
                 ChatSource.SERVER_SYSTEM,
-                "FREUNDE » [OtherUser -> Mir] zwei"
-        ));
-        engine.onIncoming(new ChatEnvelope(
-                now.plusSeconds(2),
-                ChatSource.SERVER_SYSTEM,
-                "FREUNDE » [Ruffy333 -> Mir] drei"
+                "FREUNDE » [Du -> Ruffy333] zwei"
         ));
 
-        List<PrivateConversation> recent = engine.recentPrivateConversations();
-        assertEquals("Ruffy333", recent.get(0).name());
-        assertEquals(2, recent.get(0).unread());
-        assertEquals("OtherUser", recent.get(1).name());
-        assertEquals(1, recent.get(1).unread());
+        List<PrivateMessageEntry> messages = engine.privateMessages("Ruffy333");
+        assertEquals(2, messages.size());
+        assertEquals(PrivateMessageDirection.INCOMING, messages.get(0).direction());
+        assertEquals("eins", messages.get(0).body());
+        assertEquals(PrivateMessageDirection.OUTGOING, messages.get(1).direction());
+        assertEquals("zwei", messages.get(1).body());
+
+        PrivateConversation conversation = engine.recentPrivateConversations().get(0);
+        assertEquals("zwei", conversation.preview());
+        assertEquals(now.plusSeconds(1), conversation.lastMessageAt());
     }
 
     @Test
@@ -86,29 +87,19 @@ class OpsuchtChatEngineTest {
     }
 
     @Test
-    void pinPersistsAcrossSessionResetAndCloseRemovesIt() {
+    void pinSurvivesTransientResetAndCloseRemovesIt() {
         OpsuchtChatEngine engine = new OpsuchtChatEngine();
         engine.selectPrivatePartner("Ruffy333");
 
         assertTrue(engine.togglePrivatePinned("Ruffy333"));
         assertTrue(engine.recentPrivateConversations().get(0).pinned());
 
-        engine.reset();
+        engine.resetTransientState();
         assertEquals("Ruffy333", engine.recentPrivateConversations().get(0).name());
         assertTrue(engine.recentPrivateConversations().get(0).pinned());
 
         engine.closePrivatePartner("Ruffy333");
         assertTrue(engine.recentPrivateConversations().isEmpty());
         assertFalse(engine.pinnedPrivatePartners().contains("Ruffy333"));
-    }
-
-    @Test
-    void restoredPinsAreVisibleBeforeAnyMessageArrives() {
-        OpsuchtChatEngine engine = new OpsuchtChatEngine();
-        engine.restorePinnedPrivatePartner("FavoriteUser");
-
-        assertEquals(1, engine.recentPrivateConversations().size());
-        assertEquals("FavoriteUser", engine.recentPrivateConversations().get(0).name());
-        assertTrue(engine.recentPrivateConversations().get(0).pinned());
     }
 }

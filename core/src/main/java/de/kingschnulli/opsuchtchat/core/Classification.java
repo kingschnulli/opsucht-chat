@@ -5,7 +5,9 @@ import java.util.Objects;
 public record Classification(
         ChatCategory category,
         String ruleId,
-        String privatePartner
+        String privatePartner,
+        PrivateMessageDirection privateDirection,
+        String privateBody
 ) {
     public Classification {
         Objects.requireNonNull(category, "category");
@@ -13,7 +15,11 @@ public record Classification(
     }
 
     public Classification(ChatCategory category, String ruleId) {
-        this(category, ruleId, null);
+        this(category, ruleId, null, null, null);
+    }
+
+    public Classification(ChatCategory category, String ruleId, String privatePartner) {
+        this(category, ruleId, privatePartner, null, null);
     }
 
     public static Classification message(String ruleId) {

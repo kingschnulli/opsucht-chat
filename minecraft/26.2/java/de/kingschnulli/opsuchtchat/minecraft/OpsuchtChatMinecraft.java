@@ -1,23 +1,24 @@
 package de.kingschnulli.opsuchtchat.minecraft;
 
 import de.kingschnulli.opsuchtchat.core.ChatCategory;
+import de.kingschnulli.opsuchtchat.core.ChatEngine;
 import de.kingschnulli.opsuchtchat.core.ChatEnvelope;
 import de.kingschnulli.opsuchtchat.core.ChatSource;
 import de.kingschnulli.opsuchtchat.core.Classification;
 import de.kingschnulli.opsuchtchat.core.DebugCapture;
-import de.kingschnulli.opsuchtchat.core.OpsuchtChatEngine;
-import de.kingschnulli.opsuchtchat.core.OpsuchtHost;
 import de.kingschnulli.opsuchtchat.core.PrivateConversation;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
+import de.kingschnulli.opsuchtchat.core.PrivateMessageDirection;
+import de.kingschnulli.opsuchtchat.core.PrivateMessageEntry;
+import de.kingschnulli.opsuchtchat.core.server.ChatServerAdapter;
+import de.kingschnulli.opsuchtchat.core.server.ServerAdapterRegistry;
+import de.kingschnulli.opsuchtchat.core.social.LocalSocialStore;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.WeakHashMap;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
@@ -40,29 +41,32 @@ public final class OpsuchtChatMinecraft {
             "(?m)(?:^|\\n)[^|\\n]+\\|\\s*(.+?)\\s*»"
     );
 
-    private static final int FRAME_X = 6;
-    private static final int FRAME_MAX_WIDTH = 430;
-    private static final int FRAME_MIN_WIDTH = 300;
-    private static final int SIDEBAR_MAX_WIDTH = 124;
-    private static final int SIDEBAR_MIN_WIDTH = 102;
+    private static final int FRAME_X = 5;
+    private static final int FRAME_MAX_WIDTH = 390;
+    private static final int FRAME_MIN_WIDTH = 200;
+    private static final int SIDEBAR_MAX_WIDTH = 112;
+    private static final int SIDEBAR_MIN_WIDTH = 78;
     private static final int MESSAGE_BOTTOM_GAP = 42;
 
-    private static final OpsuchtChatEngine ENGINE = new OpsuchtChatEngine();
     private static final Map<GuiMessage, Classification> CLASSIFICATIONS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
+    private static ChatEngine engine;
+    private static ChatServerAdapter adapter;
+    private static LocalSocialStore socialStore;
+    private static String activeServerAddress;
     private static DebugCapture debugCapture;
-    private static boolean pinsLoaded;
 
     private OpsuchtChatMinecraft() {
     }
 
     public static void bootstrap() {
-        loadPinnedPartners();
+        ensureServerState();
         installFilter();
     }
 
     public static void installFilter() {
+        ensureServerState();
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft != null && minecraft.gui != null && minecraft.gui.hud != null) {
             Predicate<GuiMessage> vanilla = vanillaFilter();
@@ -77,12 +81,8 @@ public final class OpsuchtChatMinecraft {
     }
 
     public static boolean isActive() {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null) {
-            return false;
-        }
-        ServerData server = minecraft.getCurrentServer();
-        return server != null && OpsuchtHost.matches(server.ip);
+        ensureServerState();
+        return adapter != null && engine != null;
     }
 
     public static boolean isChatFrameActive() {
@@ -91,6 +91,11 @@ public final class OpsuchtChatMinecraft {
                 && minecraft != null
                 && minecraft.gui != null
                 && minecraft.gui.screen() instanceof ChatScreen;
+    }
+
+    public static String adapterId() {
+        ensureServerState();
+        return adapter == null ? "unknown" : adapter.id();
     }
 
     public static int frameX() {
@@ -104,8 +109,9 @@ public final class OpsuchtChatMinecraft {
         }
 
         int screenWidth = minecraft.getWindow().getGuiScaledWidth();
-        int preferred = Math.min(FRAME_MAX_WIDTH, Math.max(FRAME_MIN_WIDTH, (int)Math.round(screenWidth * 0.48)));
-        return Math.max(220, Math.min(screenWidth - FRAME_X * 2, preferred));
+        int preferred = (int)Math.round(screenWidth * 0.48);
+        preferred = Math.max(FRAME_MIN_WIDTH, Math.min(FRAME_MAX_WIDTH, preferred));
+        return Math.max(170, Math.min(screenWidth - FRAME_X * 2, preferred));
     }
 
     public static int messageBottom() {
@@ -123,14 +129,13 @@ public final class OpsuchtChatMinecraft {
         }
 
         int screenHeight = minecraft.getWindow().getGuiScaledHeight();
-        double scale = Math.max(0.1, minecraft.options.chatScale().get());
-        int configured = (int)Math.ceil(ChatComponent.getHeight(minecraft.options.chatHeightFocused().get()) * scale);
-        int desired = Math.max(configured, 126);
-        return Math.max(72, Math.min(desired, screenHeight - 104));
+        int target = (int)Math.round(screenHeight * 0.54);
+        int max = Math.max(86, Math.min(170, screenHeight - 92));
+        return Math.max(86, Math.min(max, target));
     }
 
     public static int frameTop() {
-        return messageBottom() - messageHeightPixels() - 4;
+        return messageBottom() - messageHeightPixels() - 3;
     }
 
     public static int frameBottom() {
@@ -139,17 +144,16 @@ public final class OpsuchtChatMinecraft {
     }
 
     public static int sidebarWidth() {
-        if (ENGINE.activeCategory() != ChatCategory.PRIVATE) {
+        if (activeCategory() != ChatCategory.PRIVATE) {
             return 0;
         }
 
         int frameWidth = frameWidth();
-        return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, frameWidth / 3));
+        return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, (int)Math.round(frameWidth * 0.36)));
     }
 
     public static int chatRenderOffsetX() {
-        int sidebar = sidebarWidth();
-        return FRAME_X + (sidebar == 0 ? 0 : sidebar + 5);
+        return FRAME_X + 3;
     }
 
     public static int chatContentWidthLogical() {
@@ -159,7 +163,7 @@ public final class OpsuchtChatMinecraft {
         }
 
         double scale = Math.max(0.1, minecraft.options.chatScale().get());
-        int contentPixels = frameWidth() - sidebarWidth() - 12;
+        int contentPixels = frameWidth() - 12;
         return Math.max(40, (int)Math.floor(contentPixels / scale));
     }
 
@@ -251,21 +255,46 @@ public final class OpsuchtChatMinecraft {
     }
 
     public static void observe(GuiMessage message) {
+        ensureServerState();
+        if (engine == null) {
+            return;
+        }
+
         ChatEnvelope envelope = envelope(message);
-        Classification classification = ENGINE.onIncoming(envelope);
+        Classification classification = engine.onIncoming(envelope);
         CLASSIFICATIONS.put(message, classification);
         debugCapture().append(envelope, classification);
+
+        if (socialStore != null
+                && classification.category() == ChatCategory.PRIVATE
+                && classification.privatePartner() != null
+                && classification.privateBody() != null
+                && !classification.privateBody().isBlank()) {
+            socialStore.appendPrivateMessage(new PrivateMessageEntry(
+                    envelope.receivedAt(),
+                    classification.privatePartner(),
+                    classification.privateDirection() == null
+                            ? PrivateMessageDirection.UNKNOWN
+                            : classification.privateDirection(),
+                    classification.privateBody()
+            ));
+        }
     }
 
     public static boolean isVisibleInSelectedTab(GuiMessage message) {
-        ChatCategory active = ENGINE.activeCategory();
+        ensureServerState();
+        if (engine == null) {
+            return true;
+        }
+
+        ChatCategory active = engine.activeCategory();
         if (active == ChatCategory.ALL) {
             return true;
         }
 
         Classification classification = CLASSIFICATIONS.get(message);
         if (classification == null) {
-            classification = ENGINE.classifyStateless(envelope(message));
+            classification = engine.classifyStateless(envelope(message));
             CLASSIFICATIONS.put(message, classification);
         }
 
@@ -273,7 +302,7 @@ public final class OpsuchtChatMinecraft {
             if (classification.category() != ChatCategory.PRIVATE) {
                 return false;
             }
-            String selectedPartner = ENGINE.activePrivatePartner();
+            String selectedPartner = engine.activePrivatePartner();
             return selectedPartner == null
                     || selectedPartner.equalsIgnoreCase(classification.privatePartner());
         }
@@ -285,7 +314,7 @@ public final class OpsuchtChatMinecraft {
         if (!isActive()) {
             return;
         }
-        ENGINE.select(category);
+        engine.select(category);
         refreshChatView();
     }
 
@@ -293,52 +322,64 @@ public final class OpsuchtChatMinecraft {
         if (!isActive()) {
             return;
         }
-        ENGINE.selectPrivatePartner(partner);
+        engine.selectPrivatePartner(partner);
         refreshChatView();
     }
 
     public static void closePrivatePartner(String partner) {
-        ENGINE.closePrivatePartner(partner);
-        savePinnedPartners();
+        if (!isActive()) {
+            return;
+        }
+        engine.closePrivatePartner(partner);
+        saveFavorites();
         refreshChatView();
     }
 
     public static boolean togglePrivatePinned(String partner) {
-        boolean pinned = ENGINE.togglePrivatePinned(partner);
-        savePinnedPartners();
+        if (!isActive()) {
+            return false;
+        }
+        boolean pinned = engine.togglePrivatePinned(partner);
+        saveFavorites();
         return pinned;
     }
 
     public static ChatCategory activeCategory() {
-        return ENGINE.activeCategory();
+        ensureServerState();
+        return engine == null ? ChatCategory.ALL : engine.activeCategory();
     }
 
     public static String activePrivatePartner() {
-        return ENGINE.activePrivatePartner();
+        ensureServerState();
+        return engine == null ? null : engine.activePrivatePartner();
     }
 
     public static boolean isCategorySelected(ChatCategory category) {
-        if (ENGINE.activeCategory() != category) {
+        if (engine == null || engine.activeCategory() != category) {
             return false;
         }
-        return category != ChatCategory.PRIVATE || ENGINE.activePrivatePartner() == null;
+        return category != ChatCategory.PRIVATE || engine.activePrivatePartner() == null;
     }
 
     public static boolean isPrivatePartnerSelected(String partner) {
-        return ENGINE.isPrivatePartnerSelected(partner);
+        return engine != null && engine.isPrivatePartnerSelected(partner);
     }
 
     public static int unread(ChatCategory category) {
-        return ENGINE.unread(category);
+        return engine == null ? 0 : engine.unread(category);
     }
 
     public static List<PrivateConversation> recentPrivateConversations() {
-        return ENGINE.recentPrivateConversations();
+        return engine == null ? List.of() : engine.recentPrivateConversations();
+    }
+
+    public static List<PrivateMessageEntry> privateMessages(String partner) {
+        return engine == null || partner == null ? List.of() : engine.privateMessages(partner);
     }
 
     public static String tabLabel(ChatCategory category) {
         String label = category.label();
-        int unread = ENGINE.unread(category);
+        int unread = unread(category);
         if (category == ChatCategory.PRIVATE && unread > 0) {
             label += " [" + compactUnread(unread) + "]";
         }
@@ -346,7 +387,7 @@ public final class OpsuchtChatMinecraft {
     }
 
     public static String privateTabLabel(PrivateConversation conversation) {
-        String label = shortenPlayerName(conversation.name(), 11);
+        String label = shortenPlayerName(conversation.name(), 12);
         if (conversation.unread() > 0) {
             label += " [" + compactUnread(conversation.unread()) + "]";
         }
@@ -354,12 +395,12 @@ public final class OpsuchtChatMinecraft {
     }
 
     public static String inputContextLabel() {
-        String partner = ENGINE.activePrivatePartner();
+        String partner = activePrivatePartner();
         if (partner != null) {
             return "An: " + shortenPlayerName(partner, 13);
         }
 
-        return switch (ENGINE.activeCategory()) {
+        return switch (activeCategory()) {
             case ALL -> "ALL";
             case MESSAGE -> "MSG";
             case PRIVATE -> "PN";
@@ -371,11 +412,17 @@ public final class OpsuchtChatMinecraft {
 
     public static void onChatCleared() {
         CLASSIFICATIONS.clear();
-        ENGINE.reset();
+        if (engine != null) {
+            engine.resetTransientState();
+        }
     }
 
     public static boolean handleActivePrivateInput(String input, boolean addToRecent) {
-        String partner = ENGINE.activePrivatePartner();
+        if (!isActive()) {
+            return false;
+        }
+
+        String partner = engine.activePrivatePartner();
         if (partner == null || input == null) {
             return false;
         }
@@ -394,7 +441,7 @@ public final class OpsuchtChatMinecraft {
             minecraft.gui.hud.getChat().addRecentChat(input);
         }
 
-        minecraft.player.connection.sendCommand("msg " + partner + " " + message);
+        minecraft.player.connection.sendCommand(adapter.privateMessageCommand(partner, message));
         return true;
     }
 
@@ -405,7 +452,7 @@ public final class OpsuchtChatMinecraft {
         }
 
         if (!isActive()) {
-            showOverlay("Opsucht Chat ist nur auf opsucht.net aktiv.");
+            showOverlay("Opsucht Chat: kein unterstützter Server erkannt.");
             return true;
         }
 
@@ -483,12 +530,12 @@ public final class OpsuchtChatMinecraft {
 
     private static DebugCapture debugCapture() {
         if (debugCapture == null) {
-            debugCapture = new DebugCapture(opsuchtDataDir().resolve("debug-chat.jsonl"));
+            debugCapture = new DebugCapture(rootDataDir().resolve("debug-chat.jsonl"));
         }
         return debugCapture;
     }
 
-    private static Path opsuchtDataDir() {
+    private static Path rootDataDir() {
         Minecraft minecraft = Minecraft.getInstance();
         Path root = minecraft != null && minecraft.gameDirectory != null
                 ? minecraft.gameDirectory.toPath()
@@ -496,45 +543,44 @@ public final class OpsuchtChatMinecraft {
         return root.resolve("opsucht-chat");
     }
 
-    private static Path pinnedFile() {
-        return opsuchtDataDir().resolve("pinned-pn.txt");
-    }
+    private static void ensureServerState() {
+        Minecraft minecraft = Minecraft.getInstance();
+        ServerData server = minecraft == null ? null : minecraft.getCurrentServer();
+        String address = server == null ? null : server.ip;
 
-    private static void loadPinnedPartners() {
-        if (pinsLoaded) {
-            return;
-        }
-        pinsLoaded = true;
-
-        Path file = pinnedFile();
-        if (!Files.isRegularFile(file)) {
+        if (Objects.equals(activeServerAddress, address) && (address == null || adapter != null || engine == null)) {
             return;
         }
 
-        try {
-            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                String player = line.trim();
-                if (player.matches("[A-Za-z0-9_.~-]{1,32}")) {
-                    ENGINE.restorePinnedPrivatePartner(player);
-                }
-            }
-        } catch (IOException ignored) {
-            // Local favorites are convenience state; a read failure must never break chat.
+        activeServerAddress = address;
+        CLASSIFICATIONS.clear();
+
+        adapter = ServerAdapterRegistry.resolve(address);
+        engine = adapter == null ? null : new ChatEngine(adapter);
+        socialStore = null;
+
+        if (adapter == null || engine == null) {
+            return;
+        }
+
+        socialStore = new LocalSocialStore(rootDataDir(), adapter.id());
+
+        if ("opsucht".equals(adapter.id())) {
+            socialStore.importLegacyFavorites(rootDataDir().resolve("pinned-pn.txt"));
+        }
+
+        for (String favorite : socialStore.loadFavorites()) {
+            engine.restorePinnedPrivatePartner(favorite);
+        }
+
+        for (PrivateMessageEntry message : socialStore.loadPrivateMessages(1_000)) {
+            engine.restorePrivateMessage(message);
         }
     }
 
-    private static void savePinnedPartners() {
-        try {
-            Files.createDirectories(opsuchtDataDir());
-            Files.write(
-                    pinnedFile(),
-                    ENGINE.pinnedPrivatePartners(),
-                    StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING
-            );
-        } catch (IOException ignored) {
-            // Local persistence must never break chat.
+    private static void saveFavorites() {
+        if (socialStore != null && engine != null) {
+            socialStore.saveFavorites(engine.pinnedPrivatePartners());
         }
     }
 

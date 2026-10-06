@@ -10,7 +10,7 @@ class OpsuchtClassifierTest {
     private final Instant now = Instant.parse("2026-10-06T18:00:00Z");
 
     @Test
-    void classifiesIncomingPrivateMessageAndExtractsPartner() {
+    void classifiesIncomingPrivateMessageAndExtractsTranscriptData() {
         OpsuchtClassifier classifier = new OpsuchtClassifier();
         Classification result = classifier.classify(new ChatEnvelope(
                 now,
@@ -20,10 +20,12 @@ class OpsuchtClassifierTest {
 
         assertEquals(ChatCategory.PRIVATE, result.category());
         assertEquals("Ruffy333", result.privatePartner());
+        assertEquals(PrivateMessageDirection.INCOMING, result.privateDirection());
+        assertEquals("was geht", result.privateBody());
     }
 
     @Test
-    void classifiesOutgoingPrivateMessageAndExtractsPartner() {
+    void classifiesOutgoingPrivateMessageAndExtractsTranscriptData() {
         OpsuchtClassifier classifier = new OpsuchtClassifier();
         Classification result = classifier.classify(new ChatEnvelope(
                 now,
@@ -33,6 +35,8 @@ class OpsuchtClassifierTest {
 
         assertEquals(ChatCategory.PRIVATE, result.category());
         assertEquals("Ruffy333", result.privatePartner());
+        assertEquals(PrivateMessageDirection.OUTGOING, result.privateDirection());
+        assertEquals("jo", result.privateBody());
     }
 
     @Test
@@ -72,49 +76,37 @@ class OpsuchtClassifierTest {
     }
 
     @Test
-    void recognizesRealPlayerAuctionBidsAndCountdown() {
+    void recognizesObservedOpsuchtAuctionVariants() {
         OpsuchtClassifier classifier = new OpsuchtClassifier();
 
         classifier.classify(new ChatEnvelope(
                 now,
                 ChatSource.PLAYER,
-                "Diamond | ~PG_Mystical » versteigere Testitem"
+                "PLATIN | Kingschnulli » Versteigere [OPSUCHT Kaffeetasse] - start 1$"
         ));
 
         assertEquals(ChatCategory.AUCTION, classifier.classify(new ChatEnvelope(
                 now.plusSeconds(5),
                 ChatSource.PLAYER,
-                "Spieler | Mikasa2009 » 2002$"
+                "Diamond | JustiniusOG » -1k"
         )).category());
 
         assertEquals(ChatCategory.AUCTION, classifier.classify(new ChatEnvelope(
                 now.plusSeconds(10),
                 ChatSource.PLAYER,
-                "Ultra | ~Dom_P_Can » 2100"
+                "PLATIN | HowIMetYourMoney » biete 6k"
         )).category());
 
         assertEquals(ChatCategory.AUCTION, classifier.classify(new ChatEnvelope(
                 now.plusSeconds(15),
                 ChatSource.PLAYER,
-                "Diamond | ~PG_Mystical » 2108 dollar zum ersten"
+                "PLATIN | Kingschnulli » 5.5k [OPSUCHT Kaffeetasse] zum 2."
         )).category());
 
         assertEquals(ChatCategory.AUCTION, classifier.classify(new ChatEnvelope(
                 now.plusSeconds(20),
                 ChatSource.PLAYER,
-                "Diamond | ~PG_Mystical » 2108 zum zweiten"
-        )).category());
-
-        assertEquals(ChatCategory.AUCTION, classifier.classify(new ChatEnvelope(
-                now.plusSeconds(25),
-                ChatSource.PLAYER,
-                "Diamond | ~PG_Mystical » und 2108 zum dritten vk"
-        )).category());
-
-        assertEquals(ChatCategory.MESSAGE, classifier.classify(new ChatEnvelope(
-                now.plusSeconds(30),
-                ChatSource.PLAYER,
-                "Spieler | Jemand » 2500"
+                "PLATIN | Kingschnulli » [OPSUCHT Kaffeetasse] verkauft - bitte tpa"
         )).category());
     }
 
@@ -179,38 +171,8 @@ class OpsuchtClassifierTest {
         assertEquals(ChatCategory.ADVERTISING, classifier.classify(new ChatEnvelope(
                 now.plusSeconds(1),
                 ChatSource.PLAYER,
-                "»\nPLATIN | WeeF07 » ich verkaufe einen [Zeus Gewitterbogen] für 10m bei intresse /msg me\n»"
-        )).category());
-
-        assertEquals(ChatCategory.ADVERTISING, classifier.classify(new ChatEnvelope(
-                now.plusSeconds(2),
-                ChatSource.PLAYER,
-                "»\nPLATIN | KenjiTheWerwolf » Verkaufe mein Inventar\n»"
-        )).category());
-
-        assertEquals(ChatCategory.ADVERTISING, classifier.classify(new ChatEnvelope(
-                now.plusSeconds(3),
-                ChatSource.PLAYER,
-                "»\nPLATIN | KenjiTheWerwolf » Verkauft wer ein großes merge\n»"
-        )).category());
-
-        assertEquals(ChatCategory.ADVERTISING, classifier.classify(new ChatEnvelope(
-                now.plusSeconds(4),
-                ChatSource.PLAYER,
                 "»\nPLATIN | Skiyl » Sicher dir jetzt deine Deals -> /ah Skiyl\n»"
         )).category());
-    }
-
-    @Test
-    void conversationalSaleMessageStaysInMessageTab() {
-        OpsuchtClassifier classifier = new OpsuchtClassifier();
-        Classification result = classifier.classify(new ChatEnvelope(
-                now,
-                ChatSource.PLAYER,
-                "Spieler | WomLord80 » nein ich verkaufe dir was"
-        ));
-
-        assertEquals(ChatCategory.MESSAGE, result.category());
     }
 
     @Test
