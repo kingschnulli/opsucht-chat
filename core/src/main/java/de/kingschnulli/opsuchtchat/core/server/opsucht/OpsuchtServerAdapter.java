@@ -156,6 +156,10 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
 
         String bodyLower = body.toLowerCase(Locale.ROOT);
 
+        if (bodyLower.contains("bungeecord") || bodyLower.contains("does not provide recipes to jei")) {
+            return new ServerFeedEvent(ServerEventKind.INFO, "Client / Proxy", body, null);
+        }
+
         if (body.startsWith("➜")) {
             String action = body.substring(1).trim();
             return new ServerFeedEvent(ServerEventKind.ACTION, "Befehl", action, action);
