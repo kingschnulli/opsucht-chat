@@ -304,7 +304,14 @@ public final class OpsuchtChatMinecraft {
         trimFeed();
 
         if (classification.category() == ChatCategory.PRIVATE && classification.privatePartner() != null) {
-            learnAliasesForCanonical(classification.privatePartner());
+            String partner = classification.privatePartner();
+            learnAliasesForCanonical(partner);
+            if (socialStore != null) {
+                socialStore.setConversationClosed(partner, false);
+                if (isStoredFavorite(partner)) {
+                    engine.restorePinnedPrivatePartner(partner);
+                }
+            }
         }
 
         if (socialStore != null
@@ -364,7 +371,23 @@ public final class OpsuchtChatMinecraft {
         if (!isActive()) {
             return;
         }
-        engine.selectPrivatePartner(resolvePrivateTarget(partner));
+
+        String target = resolvePrivateTarget(partner);
+        if (socialStore != null) {
+            socialStore.setConversationClosed(target, false);
+
+            if (engine.privateMessages(target).isEmpty()) {
+                for (PrivateMessageEntry message : socialStore.loadPrivateMessagesForPartner(target, 250)) {
+                    engine.restorePrivateMessage(message);
+                }
+            }
+
+            if (isStoredFavorite(target)) {
+                engine.restorePinnedPrivatePartner(target);
+            }
+        }
+
+        engine.selectPrivatePartner(target);
         refreshChatView();
     }
 
@@ -372,8 +395,12 @@ public final class OpsuchtChatMinecraft {
         if (!isActive()) {
             return;
         }
-        engine.closePrivatePartner(partner);
-        saveFavorites();
+
+        String target = resolvePrivateTarget(partner);
+        if (socialStore != null) {
+            socialStore.setConversationClosed(target, true);
+        }
+        engine.closePrivatePartner(target);
         refreshChatView();
     }
 
@@ -706,12 +733,18 @@ public final class OpsuchtChatMinecraft {
             socialStore.importLegacyFavorites(rootDataDir().resolve("pinned-pn.txt"));
         }
 
+        Set<String> closedConversations = socialStore.loadClosedConversations();
+
         for (String favorite : socialStore.loadFavorites()) {
-            engine.restorePinnedPrivatePartner(favorite);
+            if (!closedConversations.contains(favorite.trim().toLowerCase(Locale.ROOT))) {
+                engine.restorePinnedPrivatePartner(favorite);
+            }
         }
 
         for (PrivateMessageEntry message : socialStore.loadPrivateMessages(1_000)) {
-            engine.restorePrivateMessage(message);
+            if (!closedConversations.contains(message.partner().trim().toLowerCase(Locale.ROOT))) {
+                engine.restorePrivateMessage(message);
+            }
         }
     }
 
@@ -834,6 +867,15 @@ public final class OpsuchtChatMinecraft {
                 FEED.subList(0, overflow).clear();
             }
         }
+    }
+
+    private static boolean isStoredFavorite(String partner) {
+        if (socialStore == null || partner == null) {
+            return false;
+        }
+
+        return socialStore.loadFavorites().stream()
+                .anyMatch(value -> value.equalsIgnoreCase(partner));
     }
 
     private static void saveFavorites() {
