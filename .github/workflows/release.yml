@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'release/**'
   workflow_dispatch:
     inputs:
       version:
@@ -40,6 +42,11 @@ jobs:
             VERSION="${MANUAL_VERSION#v}"
             TAG="v${VERSION}"
             PRERELEASE="${MANUAL_PRERELEASE:-false}"
+          elif [[ "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == release/* ]]; then
+            VERSION="${GITHUB_REF_NAME#release/}"
+            VERSION="${VERSION#v}"
+            TAG="v${VERSION}"
+            if [[ "${VERSION}" == *-* ]]; then PRERELEASE=true; else PRERELEASE=false; fi
           else
             TAG="${GITHUB_REF_NAME}"
             VERSION="${TAG#v}"
