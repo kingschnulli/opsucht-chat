@@ -1,67 +1,114 @@
 # Opsucht Chat
 
-Ein kleiner, komplett clientseitiger Chat-Organizer für **opsucht.net**. Er aktiviert sich nur auf `opsucht.net` bzw. Subdomains wie `java.opsucht.net` und lässt andere Server unangetastet.
+Ein moderner, komplett clientseitiger Chat für Minecraft Java. **OPSUCHT ist der erste Server-Adapter** und aktuell der Entwicklungsfokus.
 
-Das Ziel ist nicht, den Minecraft-Chat neu zu erfinden. Opsucht Chat lässt den normalen Chat inklusive Formatierungen, Hover-Texten und Klick-Aktionen bestehen und ergänzt nur sinnvolle Tabs und eine server-spezifische Sortierung.
+Das Ziel ist ein Chat, der sich weiterhin wie Minecraft anfühlt, aber die Dinge übernimmt, die große MMOs seit Jahren besser machen: getrennte Feeds, echte PN-Unterhaltungen, lokale Social-Historie, strukturierte Servermeldungen und server-spezifische Adapter statt einer unlesbaren Textwand.
 
-## Tabs
+## Ansichten
 
-- **ALL** – wirklich alle Nachrichten, unverändert und als Sicherheitsnetz
-- **MSG** – normaler Chat: alles, was nicht in einen Spezial-Tab einsortiert wurde
-- **PN [x]** – alle Privatnachrichten, inklusive Ungelesen-Zähler
-- **AUKTION** – Start, Gebote und Abschluss einer laufenden Versteigerung
-- **SERVER** – Server-/Systemmeldungen
+- **ALL** – alle Nachrichten als Sicherheitsnetz
+- **MSG** – normaler Spielerchat
+- **PN [x]** – Social-/Privatnachrichtenbereich mit eigenen Unterhaltungen
+- **AUKTION** – Auktionsstart, Gebote, Countdown und Abschluss
+- **SERVER** – strukturierte Server-/Systemmeldungen
 - **WERBUNG** – erkannte Werbung
 
-Unbekannte Nachrichten landen in **MSG** und bleiben zusätzlich immer in **ALL**. Eine unvollständige Regel kann deshalb niemals eine Nachricht vollständig verschwinden lassen.
+Unbekannte Nachrichten landen in **MSG** und bleiben zusätzlich in **ALL**. Eine unvollständige Regel kann deshalb keine Nachricht vollständig verschwinden lassen.
 
-### Private Nachrichten
+## ChatFrame
 
-Sobald echte PNs erkannt werden, erscheinen oberhalb der Haupt-Tabs bis zu vier zuletzt aktive Spieler als eigene Tabs. Lange Spielernamen werden gekürzt; ungelesene Nachrichten werden pro Spieler gezählt.
+Wenn der Chat geöffnet ist, rendert Opsucht Chat einen eigenen Minecraft-artigen ChatFrame:
 
-Wird ein Spieler-Tab geöffnet, wird normal eingegebener Text automatisch als `/msg <Spieler> <Text>` gesendet. Explizite Slash-Commands bleiben unverändert. Die Tab-Buttons übernehmen beim Klicken nicht den Tastaturfokus, damit direkt weitergeschrieben werden kann.
+- kompakter normaler Chat mit Skin, Rang, Spielername, Uhrzeit und Nachricht
+- echte Tabs statt überlagerter Vanilla-Buttons
+- Servermeldungen als typisierte Karten, z. B. Geld, Teleport, Vote, Markt, Job oder Booster
+- Auktionen als eigene Timeline mit START / GEBOT / COUNT / VERKAUFT
+- Scrollen direkt im aktiven Feed
+- Klick auf einen Spielernamen öffnet eine PN-Unterhaltung
+- anklickbare Server-Befehle werden sicher in die Eingabe übernommen und nicht automatisch ausgeführt
+
+Der geschlossene HUD-Chat bleibt bewusst möglichst nah an Minecraft. Der umfangreiche ChatFrame wird erst beim Öffnen des Chats aktiv.
+
+## Private Nachrichten & Social
+
+PN ist kein normaler Textfilter mehr, sondern ein kleiner Social-Bereich.
+
+Links stehen die letzten Unterhaltungen, rechts der Verlauf des ausgewählten Spielers. Pro Unterhaltung gibt es:
+
+- Skin-Kopf, Spielername, Vorschau der letzten Nachricht und Uhrzeit
+- Ungelesen-Zähler
+- **★** Favorit/Pin
+- **×** zum Schließen
+- lokale PN-Historie über Neustarts hinweg
+
+Wird eine Spieler-Unterhaltung geöffnet, wird normal eingegebener Text automatisch über den Server-Adapter als PN verschickt. Auf OPSUCHT entspricht das:
+
+```text
+/msg <Spieler> <Nachricht>
+```
+
+Explizite Slash-Commands bleiben unverändert.
+
+Einzelne PNs können per **Rechtsklick** mit ★ als wichtig markiert werden. Über den ★-Schalter im PN-Bereich können alle wichtigen PNs gemeinsam angezeigt werden.
+
+### Alias / echte Spieleridentität
+
+OPSUCHT zeigt teilweise sichtbare Namen wie `~Name` oder Bedrock-Namen mit führendem Punkt. Der OPSUCHT-Adapter trennt deshalb sichtbaren Chatnamen und echte Spieleridentität.
+
+Wenn eine eindeutige Zuordnung über Tablist oder echte PN-Formate möglich ist, wird sie lokal gelernt und für Klick → PN, Skins und spätere Unterhaltungen wiederverwendet.
+
+## Lokale Daten
+
+Es gibt keine Telemetrie und keinen Upload. Social-Daten liegen ausschließlich lokal und getrennt nach Server-Adapter:
+
+```text
+.minecraft/opsucht-chat/
+├── debug-chat.jsonl
+└── social/
+    └── opsucht/
+        ├── favorites.txt
+        ├── private-messages.tsv
+        ├── aliases.tsv
+        └── important-private.txt
+```
+
+Der Debug-Logger ist standardmäßig aus und wird mit `/opschat debug` umgeschaltet.
 
 ## Auktionen
 
-Auktionen werden nicht nur über einen einzelnen Regex gefiltert. Der Core merkt sich eine laufende Auktion:
+Auktionen werden zustandsbehaftet erkannt. Der Parser merkt sich eine laufende Auktion:
 
 ```text
-Auktionsstart -> Auktion aktiv -> Gebot -> Gebot -> verkauft/abgebrochen -> beendet
+Auktionsstart -> Gebote -> zum ersten/zweiten/dritten -> verkauft
 ```
 
-Dadurch können zusammengehörige Meldungen im AUKTION-Tab bleiben, auch wenn nicht jede Zeile denselben Präfix besitzt.
+Dadurch gehören auch reine Beträge wie `5.5k` zur Auktion, solange eine passende Session aktiv ist. Die Erkennung basiert auf echten OPSUCHT-Beispielen und wird mit einem Testkorpus abgesichert.
 
 ## Installation
 
-### Prism / Fabric
+### Fabric / Prism
 
-1. Minecraft-Instanz mit Fabric 26.2 verwenden.
+1. Minecraft Java 26.2 mit Fabric verwenden.
 2. Den Fabric-Build aus den GitHub Releases in den `mods`-Ordner legen.
 3. Minecraft starten.
 
-### Prism / NeoForge
+### NeoForge / Prism
 
-1. Minecraft-Instanz mit NeoForge 26.2 verwenden.
+1. Minecraft Java 26.2 mit NeoForge verwenden.
 2. Den NeoForge-Build aus den GitHub Releases in den `mods`-Ordner legen.
 3. Minecraft starten.
 
 ### Dawn
 
-Dawn kann Fabric-/NeoForge-Profile starten. Dort einfach den passenden Build verwenden.
+Dawn kann Fabric-/NeoForge-Profile starten. Dort den passenden Build verwenden.
 
 ### LabyMod 4
 
-LabyMod 4 kann auf Minecraft 26.2 Fabric-Mods mitladen. Deshalb ist **kein dritter Sonder-Build nötig**: in einem LabyMod-Profil mit aktiviertem Fabric Loader wird zunächst derselbe Fabric-Build verwendet. Da LabyMod selbst tief in den Chat eingreift, behandeln wir diese Kombination bis zum Praxistest als **experimentell**; insbesondere Labys „Advanced Chat“ kann ein Konfliktkandidat sein.
+Der Fabric-Build wird als experimentelle Kombination behandelt. Da LabyMod selbst tief in den Chat eingreifen kann, können dort zusätzliche Kompatibilitätsarbeiten nötig werden.
 
-Falls sich dabei echte Inkompatibilitäten zeigen, bleibt der Parser-Core loader-unabhängig und wir können einen dünnen nativen LabyMod-Adapter ergänzen, ohne die Opsucht-Regeln zu duplizieren.
+Ein komplett unveränderter Vanilla-Client kann seine Chat-GUI nicht durch eine JAR aus diesem Projekt erweitern. Ein Client-Loader bzw. Addon ist technisch erforderlich.
 
-Ein komplett unveränderter Vanilla-Client kann seine Chat-GUI nicht durch eine JAR aus diesem Projekt erweitern. Dafür ist immer ein Client-Loader bzw. Client-Addon nötig.
-
-## Bedienung
-
-Die Tabs werden direkt oberhalb der Chat-Eingabe angezeigt. Ein Klick wechselt die Ansicht.
-
-Lokale Befehle:
+## Lokale Befehle
 
 ```text
 /opschat
@@ -74,13 +121,30 @@ Lokale Befehle:
 /opschat debug
 ```
 
-`/opschat debug` aktiviert bzw. deaktiviert einen **lokalen** Diagnose-Log unter:
+## Adapter-Architektur
+
+Der Chat selbst ist nicht mehr an OPSUCHT gekoppelt.
 
 ```text
-.minecraft/opsucht-chat/debug-chat.jsonl
+                    Chat UI + Social Core
+                           │
+             ┌─────────────┴─────────────┐
+             │                           │
+        Server Adapter              Client Adapter
+             │                           │
+      OPSUCHT / später X          Fabric / NeoForge
 ```
 
-Der Debug-Modus ist standardmäßig aus. Es gibt **keine Telemetrie und keinen Upload**. Wer einen Log in einem Issue veröffentlicht, sollte Spielernamen oder private Nachrichten vorher prüfen/anonymisieren.
+Ein Server-Adapter definiert unter anderem:
+
+- Erkennung der Server-Adresse
+- Klassifizierung von Chat / PN / Auktion / Server / Werbung
+- Darstellung normaler Chatzeilen
+- strukturierte Server- und Auktionsereignisse
+- sichtbarer Spielername vs. echte Identität/Alias
+- PN- und später weitere server-spezifische Befehle
+
+Details für weitere Server stehen in [docs/ADAPTERS.md](docs/ADAPTERS.md).
 
 ## Community-Projekt
 
@@ -90,49 +154,42 @@ Der Debug-Modus ist standardmäßig aus. Es gibt **keine Telemetrie und keinen U
 - keine Werbung
 - keine Telemetrie
 - kein eigener Backend-Service
-- keine Gameplay-Automatisierung
 - keine Serverinstallation erforderlich
-
-Das Projekt sortiert nur Chat-Nachrichten, die der eigene Client ohnehin erhält.
+- keine Gameplay-Automatisierung
 
 ## Entwicklung
 
-Der intelligente Teil liegt im loader-unabhängigen `core/`. Die Minecraft-Integration ist von den Loader-Adaptern getrennt:
-
 ```text
-core/                    Parser, Auktionen, Kategorien, Tests
-minecraft/26.2/          gemeinsame Minecraft-26.2-UI/Chat-Integration
+core/                    Parser, Social Model, Server Adapter, Tests
+minecraft/26.2/          gemeinsamer Minecraft-26.2-ChatFrame
 platforms/fabric/        Fabric-Einstiegspunkt
 platforms/neoforge/      NeoForge-Einstiegspunkt
 ```
 
-Build lokal mit JDK 25. Wegen der aktuellen Toolchains werden die Loader getrennt gebaut:
+Build lokal mit JDK 25:
 
 ```bash
-# Core + NeoForge (Gradle 9.2.1)
+# Core + NeoForge
 gradle --configure-on-demand :core:test :platforms:neoforge:build
 
-# Fabric (Gradle 9.7.1)
+# Fabric
 gradle --configure-on-demand :platforms:fabric:build
 ```
 
-Die GitHub Actions verwenden für jeden Loader automatisch die passende Gradle-Version.
-
 ## Releases
 
-GitHub Actions testet den gemeinsamen Core und baut Fabric sowie NeoForge in getrennten, reproduzierbaren Jobs automatisch. Ein Release kann in GitHub über **Actions → Release → Run workflow** mit einer Versionsnummer wie `0.1.0` gestartet werden. Der Workflow:
+GitHub Actions testet den Core und baut Fabric sowie NeoForge. Ein Release kann über **Actions → Release → Run workflow** gestartet werden oder über einen `release/v...`-Branch entstehen.
 
-1. führt die Core-Tests aus,
-2. baut Fabric und NeoForge,
-3. erzeugt SHA-256-Prüfsummen,
-4. erstellt den Git-Tag `v0.1.0`,
-5. veröffentlicht beide JARs als GitHub Release.
+Der Workflow erzeugt:
 
-Alternativ löst das Pushen eines Tags wie `v0.1.0` denselben Release-Build aus.
+- Fabric JAR
+- NeoForge JAR
+- `SHA256SUMS.txt`
+- GitHub Release
 
 ## Mithelfen
 
-Siehe [CONTRIBUTING.md](CONTRIBUTING.md). Vor allem echte, anonymisierte Opsucht-Chatbeispiele helfen dabei, die Klassifizierung sauberer zu machen.
+Siehe [CONTRIBUTING.md](CONTRIBUTING.md). Besonders hilfreich sind anonymisierte echte Chatbeispiele, wenn ein Serverformat falsch oder gar nicht erkannt wird.
 
 ---
 
