@@ -58,6 +58,17 @@ class LocalSocialStoreTest {
     }
 
     @Test
+    void persistsClosedConversationState() {
+        LocalSocialStore store = new LocalSocialStore(temp, "opsucht");
+
+        store.setConversationClosed("SkyDecaxy", true);
+        assertTrue(store.loadClosedConversations().contains("skydecaxy"));
+
+        store.setConversationClosed("SkyDecaxy", false);
+        assertFalse(store.loadClosedConversations().contains("skydecaxy"));
+    }
+
+    @Test
     void isolatesSocialDataBetweenServerAdapters() {
         LocalSocialStore opsucht = new LocalSocialStore(temp, "opsucht");
         LocalSocialStore another = new LocalSocialStore(temp, "another-server");
