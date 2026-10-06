@@ -174,10 +174,9 @@ public final class LocalSocialStore {
 
         Set<String> values = new LinkedHashSet<>(loadClosedConversations());
         String key = identityKey(partner);
-        if (closed) {
-            values.add(key);
-        } else {
-            values.remove(key);
+        boolean changed = closed ? values.add(key) : values.remove(key);
+        if (!changed) {
+            return;
         }
 
         try {
