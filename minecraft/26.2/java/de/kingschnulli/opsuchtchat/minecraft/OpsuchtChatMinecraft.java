@@ -394,10 +394,7 @@ public final class OpsuchtChatMinecraft {
     }
 
     public static boolean isCategorySelected(ChatCategory category) {
-        if (engine == null || engine.activeCategory() != category) {
-            return false;
-        }
-        return category != ChatCategory.PRIVATE || engine.activePrivatePartner() == null;
+        return engine != null && engine.activeCategory() == category;
     }
 
     public static boolean isPrivatePartnerSelected(String partner) {
