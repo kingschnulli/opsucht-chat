@@ -19,8 +19,11 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.PlayerFaceExtractor;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
@@ -85,6 +88,8 @@ public abstract class ChatScreenMixin extends Screen {
     private final FrameButton[] opsuchtChat$privateCloseButtons = new FrameButton[PRIVATE_TAB_SLOTS];
     @Unique
     private final String[] opsuchtChat$privatePartners = new String[PRIVATE_TAB_SLOTS];
+    @Unique
+    private final List<PrivateMessageHitbox> opsuchtChat$messageHitboxes = new ArrayList<>();
 
     protected ChatScreenMixin(Component title) {
         super(title);
@@ -146,7 +151,14 @@ public abstract class ChatScreenMixin extends Screen {
 
             String partner = OpsuchtChatMinecraft.activePrivatePartner();
             if (partner != null) {
-                graphics.text(this.font, "PN · " + partner, sidebarRight + 8, top + 5, TEXT, false);
+                int headerX = sidebarRight + 7;
+                opsuchtChat$renderFace(graphics, partner, headerX, top + 3, 14);
+                graphics.text(this.font, "PN · " + partner, headerX + 19, top + 5, TEXT, false);
+
+                PlayerInfo info = OpsuchtChatMinecraft.playerInfo(partner);
+                if (info != null) {
+                    graphics.fill(headerX + 12, top + 14, headerX + 15, top + 17, 0xFF36D45A);
+                }
             } else {
                 graphics.text(this.font, "Unterhaltung auswählen", sidebarRight + 8, top + 5, MUTED, false);
             }
@@ -230,6 +242,30 @@ public abstract class ChatScreenMixin extends Screen {
         }
     }
 
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
+    private void opsuchtChat$toggleImportantMessage(
+            MouseButtonEvent event,
+            boolean doubleClick,
+            CallbackInfoReturnable<Boolean> cir
+    ) {
+        if (!OpsuchtChatMinecraft.isChatFrameActive()
+                || OpsuchtChatMinecraft.activeCategory() != ChatCategory.PRIVATE
+                || event.button() != 1) {
+            return;
+        }
+
+        int mouseX = (int)event.x();
+        int mouseY = (int)event.y();
+        for (PrivateMessageHitbox hitbox : opsuchtChat$messageHitboxes) {
+            if (hitbox.contains(mouseX, mouseY)) {
+                boolean important = !OpsuchtChatMinecraft.isImportant(hitbox.message());
+                OpsuchtChatMinecraft.setImportant(hitbox.message(), important);
+                cir.setReturnValue(true);
+                return;
+            }
+        }
+    }
+
     @Inject(method = "handleComponentClicked", at = @At("HEAD"), cancellable = true)
     private void opsuchtChat$openPrivateFromPlayerName(
             Style clicked,
@@ -252,6 +288,7 @@ public abstract class ChatScreenMixin extends Screen {
 
     @Unique
     private void opsuchtChat$renderPrivateTranscript(GuiGraphicsExtractor graphics, Font font) {
+        opsuchtChat$messageHitboxes.clear();
         String partner = OpsuchtChatMinecraft.activePrivatePartner();
         int x = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.sidebarWidth() + 8;
         int right = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.frameWidth() - 6;
@@ -294,12 +331,11 @@ public abstract class ChatScreenMixin extends Screen {
 
             int avatarX = x;
             int avatarY = y + 1;
-            int avatarColor = outgoing ? 0xFF225B73 : 0xFF6A5722;
-            graphics.fill(avatarX, avatarY, avatarX + 14, avatarY + 14, avatarColor);
-
-            String initial = outgoing ? "D" : firstLetter(entry.partner());
-            int initialX = avatarX + Math.max(2, (14 - font.width(initial)) / 2);
-            graphics.text(font, initial, initialX, avatarY + 3, TEXT, false);
+            if (outgoing) {
+                opsuchtChat$renderSelfFace(graphics, avatarX, avatarY, 14);
+            } else {
+                opsuchtChat$renderFace(graphics, entry.partner(), avatarX, avatarY, 14);
+            }
 
             String sender = outgoing ? "Du" : entry.partner();
             int senderColor = outgoing ? OUTGOING : INCOMING;
@@ -309,12 +345,24 @@ public abstract class ChatScreenMixin extends Screen {
             int timeX = Math.min(right - font.width(time), x + 22 + font.width(sender));
             graphics.text(font, time, timeX, y, MUTED, false);
 
+            boolean important = OpsuchtChatMinecraft.isImportant(entry);
+            if (important) {
+                graphics.text(font, "★", right - font.width("★"), y, INCOMING, false);
+            }
+
             int lineY = y + 11;
             for (FormattedCharSequence line : layout.lines()) {
                 graphics.text(font, line, x + 19, lineY, TEXT, false);
                 lineY += 9;
             }
 
+            opsuchtChat$messageHitboxes.add(new PrivateMessageHitbox(
+                    x,
+                    y,
+                    right,
+                    y + layout.height(),
+                    entry
+            ));
             y += layout.height();
         }
     }
@@ -363,11 +411,26 @@ public abstract class ChatScreenMixin extends Screen {
         int frameWidth = OpsuchtChatMinecraft.frameWidth();
         int count = ChatCategory.values().length;
         int usable = frameWidth - 6 - (count - 1) * TAB_GAP;
-        int width = Math.max(30, usable / count);
         int y = this.height - 40;
 
+        int required = 0;
+        int[] widths = new int[count];
+        int index = 0;
+        for (ChatCategory category : ChatCategory.values()) {
+            String label = OpsuchtChatMinecraft.tabLabel(category);
+            widths[index] = Math.max(26, this.font.width(label) + 7);
+            required += widths[index];
+            index++;
+        }
+
+        int extraPerTab = Math.max(0, (usable - required) / count);
+        index = 0;
         for (ChatCategory category : ChatCategory.values()) {
             FrameButton button = opsuchtChat$buttons.get(category);
+            int width = widths[index++] + extraPerTab;
+            if (x + width > OpsuchtChatMinecraft.frameX() + frameWidth - 3) {
+                width = Math.max(24, OpsuchtChatMinecraft.frameX() + frameWidth - 3 - x);
+            }
             button.setRectangle(width, TAB_HEIGHT, x, y);
             button.setMessage(Component.literal(OpsuchtChatMinecraft.tabLabel(category)));
             x += width + TAB_GAP;
@@ -571,10 +634,7 @@ public abstract class ChatScreenMixin extends Screen {
 
             int avatarX = getX() + 4;
             int avatarY = getY() + 5;
-            graphics.fill(avatarX, avatarY, avatarX + 15, avatarY + 15, 0xFF39434D);
-            String initial = firstLetter(conversation.name());
-            int initialX = avatarX + Math.max(2, (15 - font.width(initial)) / 2);
-            graphics.text(font, initial, initialX, avatarY + 3, TEXT, false);
+            opsuchtChat$renderFaceStatic(graphics, conversation.name(), avatarX, avatarY, 15);
 
             int textX = getX() + 23;
             int actionReserve = 31;
@@ -583,7 +643,15 @@ public abstract class ChatScreenMixin extends Screen {
             graphics.text(font, name, textX, getY() + 3, TEXT, false);
 
             String preview = conversation.preview() == null ? "" : conversation.preview();
-            preview = clamp(font, preview, Math.max(20, getWidth() - 27));
+            int previewWidth = Math.max(18, getWidth() - 27);
+            if (conversation.lastMessageAt() != null
+                    && !conversation.lastMessageAt().equals(java.time.Instant.EPOCH)) {
+                String time = TIME_FORMAT.format(conversation.lastMessageAt());
+                int timeWidth = font.width(time);
+                previewWidth = Math.max(18, previewWidth - timeWidth - 3);
+                graphics.text(font, time, getRight() - timeWidth - 3, getY() + 15, MUTED, false);
+            }
+            preview = clamp(font, preview, previewWidth);
             if (!preview.isBlank()) {
                 graphics.text(font, preview, textX, getY() + 15, MUTED, false);
             }
@@ -605,6 +673,67 @@ public abstract class ChatScreenMixin extends Screen {
             String suffix = "...";
             int suffixWidth = font.width(suffix);
             return font.plainSubstrByWidth(value, Math.max(1, width - suffixWidth)) + suffix;
+        }
+    }
+
+    @Unique
+    private void opsuchtChat$renderFace(
+            GuiGraphicsExtractor graphics,
+            String player,
+            int x,
+            int y,
+            int size
+    ) {
+        opsuchtChat$renderFaceStatic(graphics, player, x, y, size);
+    }
+
+    @Unique
+    private static void opsuchtChat$renderFaceStatic(
+            GuiGraphicsExtractor graphics,
+            String player,
+            int x,
+            int y,
+            int size
+    ) {
+        PlayerInfo info = OpsuchtChatMinecraft.playerInfo(player);
+        if (info != null) {
+            PlayerFaceExtractor.extractRenderState(graphics, info.getSkin(), x, y, size);
+            return;
+        }
+
+        graphics.fill(x, y, x + size, y + size, 0xFF39434D);
+        Font font = Minecraft.getInstance().font;
+        String initial = firstLetter(player);
+        int initialX = x + Math.max(2, (size - font.width(initial)) / 2);
+        int initialY = y + Math.max(1, (size - 9) / 2);
+        graphics.text(font, initial, initialX, initialY, TEXT, false);
+    }
+
+    @Unique
+    private static void opsuchtChat$renderSelfFace(
+            GuiGraphicsExtractor graphics,
+            int x,
+            int y,
+            int size
+    ) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player != null) {
+            PlayerFaceExtractor.extractRenderState(graphics, minecraft.player.getSkin(), x, y, size);
+            return;
+        }
+        graphics.fill(x, y, x + size, y + size, 0xFF225B73);
+    }
+
+    @Unique
+    private record PrivateMessageHitbox(
+            int left,
+            int top,
+            int right,
+            int bottom,
+            PrivateMessageEntry message
+    ) {
+        private boolean contains(int x, int y) {
+            return x >= left && x < right && y >= top && y < bottom;
         }
     }
 
