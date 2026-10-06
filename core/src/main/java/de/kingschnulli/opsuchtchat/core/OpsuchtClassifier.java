@@ -74,7 +74,8 @@ public final class OpsuchtClassifier {
             "\\bverkaufe\\b.*(?:\\b(?:für|fuer|msg|angebot|inventar)\\b|/msg)",
             "^\\s*verkaufe\\s+mein\\s+inventar\\b",
             "\\bverkauft\\s+wer\\b",
-            "\\bbei\\s+int(?:e)?resse\\b.*(?:/msg|\\bmsg\\b)"
+            "\\bbei\\s+int(?:e)?resse\\b.*(?:/msg|\\bmsg\\b)",
+            "\\bsicher(?:e|t)?\\b.*\\bdeals?\\b.*(?:/ah|/sw|/shop)\\b"
     );
 
     private static final List<Pattern> SERVER_PREFIX_PATTERNS = patterns(
