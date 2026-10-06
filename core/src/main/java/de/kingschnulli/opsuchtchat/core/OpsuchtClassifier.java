@@ -3,16 +3,26 @@ package de.kingschnulli.opsuchtchat.core;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Stateful classifier for the message formats seen on opsucht.net.
  *
- * The rules intentionally prefer precision over recall. Unknown messages stay in ALL,
- * so a bad rule cannot make a message disappear from the user's chat.
+ * The rules intentionally prefer precision over recall. Unknown messages are classified
+ * as MESSAGE so they can be shown in MSG while ALL remains a complete safety-net view.
  */
 public final class OpsuchtClassifier {
     private static final Duration AUCTION_IDLE_TIMEOUT = Duration.ofSeconds(120);
+
+    private static final Pattern PRIVATE_INCOMING = Pattern.compile(
+            "\\bfreunde\\s*[»>]\\s*\\[\\s*(.+?)\\s*(?:->|→)\\s*mir\\s*]",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
+    );
+    private static final Pattern PRIVATE_OUTGOING = Pattern.compile(
+            "\\bfreunde\\s*[»>]\\s*\\[\\s*mir\\s*(?:->|→)\\s*(.+?)\\s*]",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
+    );
 
     private static final List<Pattern> PRIVATE_PATTERNS = patterns(
             "\\bfreunde\\s*[»>]\\s*\\[[^\\]]*(?:->|→)\\s*mir\\s*]",
@@ -39,11 +49,6 @@ public final class OpsuchtClassifier {
             "\\baktuell(?:es)?\\s+gebot\\b"
     );
 
-    /**
-     * Opsucht player auctions are mostly plain chat. Once an auction is active,
-     * bidders often send only a number ("2100", "2108$"), while the seller counts
-     * down with "2108 zum ersten/zweiten/dritten".
-     */
     private static final List<Pattern> AUCTION_ACTIVE_BID_PATTERNS = patterns(
             "^\\s*\\d[\\d.,]*\\s*(?:\\$|dollar|k|kk|m|mio\\.?|b)?\\s*$",
             "^\\s*(?:und\\s+)?\\d[\\d.,]*\\s*(?:\\$|dollar|k|kk|m|mio\\.?|b)?\\s+zum\\s+(?:ersten|zweiten)\\b.*$",
@@ -81,18 +86,18 @@ public final class OpsuchtClassifier {
     private Instant auctionActiveUntil = Instant.EPOCH;
 
     public Classification classify(ChatEnvelope message) {
-        String text = TextNormalizer.normalize(message.text());
+        String cleanText = TextNormalizer.clean(message.text());
+        String text = cleanText.toLowerCase(java.util.Locale.ROOT);
         String playerContent = playerContent(text);
         Instant now = message.receivedAt();
 
-        // Official Opsucht announcements can deliberately look like a private
-        // message ("FREUNDE » [OPSUCHT -> Mir]"). Keep those in SERVER, not PN.
         if (matchesAny(SERVER_PREFIX_PATTERNS, text)) {
             return new Classification(ChatCategory.SERVER, "server.prefix");
         }
 
-        if (matchesAny(PRIVATE_PATTERNS, text)) {
-            return new Classification(ChatCategory.PRIVATE, "private.explicit");
+        String privatePartner = extractPrivatePartner(cleanText);
+        if (privatePartner != null || matchesAny(PRIVATE_PATTERNS, text)) {
+            return new Classification(ChatCategory.PRIVATE, "private.explicit", privatePartner);
         }
 
         boolean auctionPrefixed = matchesAny(AUCTION_PREFIX_PATTERNS, text);
@@ -118,30 +123,30 @@ public final class OpsuchtClassifier {
             return new Classification(ChatCategory.ADVERTISING, "advertising.player");
         }
 
-        return Classification.all("fallback.all");
+        return Classification.message("fallback.message");
     }
 
-    /**
-     * Stateless fallback used only when a platform sees a message that was not observed live.
-     * It deliberately does not infer auction follow-up state.
-     */
     public Classification classifyStateless(ChatEnvelope message) {
-        String text = TextNormalizer.normalize(message.text());
+        String cleanText = TextNormalizer.clean(message.text());
+        String text = cleanText.toLowerCase(java.util.Locale.ROOT);
         String playerContent = playerContent(text);
 
         if (matchesAny(SERVER_PREFIX_PATTERNS, text)) {
             return new Classification(ChatCategory.SERVER, "server.prefix");
         }
-        if (matchesAny(PRIVATE_PATTERNS, text)) {
-            return new Classification(ChatCategory.PRIVATE, "private.explicit");
+
+        String privatePartner = extractPrivatePartner(cleanText);
+        if (privatePartner != null || matchesAny(PRIVATE_PATTERNS, text)) {
+            return new Classification(ChatCategory.PRIVATE, "private.explicit", privatePartner);
         }
+
         if (matchesAny(AUCTION_PREFIX_PATTERNS, text) || matchesAny(AUCTION_START_PATTERNS, playerContent)) {
             return new Classification(ChatCategory.AUCTION, "auction.stateless");
         }
         if (matchesAny(ADVERTISING_PATTERNS, playerContent)) {
             return new Classification(ChatCategory.ADVERTISING, "advertising.player");
         }
-        return Classification.all("fallback.all");
+        return Classification.message("fallback.message");
     }
 
     public void resetSessionState() {
@@ -168,11 +173,43 @@ public final class OpsuchtClassifier {
         auctionActiveUntil = Instant.EPOCH;
     }
 
-    /**
-     * Removes the rank/name prefix from a normal player chat line while leaving
-     * non-player/system formats untouched. Wrapped chat messages often look like:
-     * "» PLATIN | Name » message »".
-     */
+    private static String extractPrivatePartner(String cleanText) {
+        Matcher incoming = PRIVATE_INCOMING.matcher(cleanText);
+        if (incoming.find()) {
+            return normalizePrivatePartner(incoming.group(1));
+        }
+
+        Matcher outgoing = PRIVATE_OUTGOING.matcher(cleanText);
+        if (outgoing.find()) {
+            return normalizePrivatePartner(outgoing.group(1));
+        }
+
+        return null;
+    }
+
+    private static String normalizePrivatePartner(String raw) {
+        if (raw == null) {
+            return null;
+        }
+
+        String value = raw.trim();
+        int pipe = Math.max(value.lastIndexOf('|'), value.lastIndexOf('┃'));
+        if (pipe >= 0) {
+            value = value.substring(pipe + 1).trim();
+        }
+
+        int space = value.lastIndexOf(' ');
+        if (space >= 0) {
+            value = value.substring(space + 1).trim();
+        }
+
+        if (value.equalsIgnoreCase("mir") || value.equalsIgnoreCase("opsucht")) {
+            return null;
+        }
+
+        return value.matches("[A-Za-z0-9_.~-]{1,32}") ? value : null;
+    }
+
     private static String playerContent(String text) {
         String value = text.trim();
         if (value.endsWith("»")) {

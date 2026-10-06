@@ -7,9 +7,12 @@ import de.kingschnulli.opsuchtchat.core.Classification;
 import de.kingschnulli.opsuchtchat.core.DebugCapture;
 import de.kingschnulli.opsuchtchat.core.OpsuchtChatEngine;
 import de.kingschnulli.opsuchtchat.core.OpsuchtHost;
+import de.kingschnulli.opsuchtchat.core.PrivateConversation;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.Predicate;
@@ -82,6 +85,16 @@ public final class OpsuchtChatMinecraft {
             classification = ENGINE.classifyStateless(envelope(message));
             CLASSIFICATIONS.put(message, classification);
         }
+
+        if (active == ChatCategory.PRIVATE) {
+            if (classification.category() != ChatCategory.PRIVATE) {
+                return false;
+            }
+            String selectedPartner = ENGINE.activePrivatePartner();
+            return selectedPartner == null
+                    || selectedPartner.equalsIgnoreCase(classification.privatePartner());
+        }
+
         return classification.category() == active;
     }
 
@@ -90,29 +103,57 @@ public final class OpsuchtChatMinecraft {
             return;
         }
         ENGINE.select(category);
-        installFilter();
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft != null && minecraft.gui != null && minecraft.gui.hud != null) {
-            minecraft.gui.hud.getChat().resetChatScroll();
+        refreshChatView();
+    }
+
+    public static void selectPrivatePartner(String partner) {
+        if (!isActive()) {
+            return;
         }
+        ENGINE.selectPrivatePartner(partner);
+        refreshChatView();
     }
 
     public static ChatCategory activeCategory() {
         return ENGINE.activeCategory();
     }
 
+    public static String activePrivatePartner() {
+        return ENGINE.activePrivatePartner();
+    }
+
+    public static boolean isCategorySelected(ChatCategory category) {
+        if (ENGINE.activeCategory() != category) {
+            return false;
+        }
+        return category != ChatCategory.PRIVATE || ENGINE.activePrivatePartner() == null;
+    }
+
+    public static boolean isPrivatePartnerSelected(String partner) {
+        return ENGINE.isPrivatePartnerSelected(partner);
+    }
+
     public static int unread(ChatCategory category) {
         return ENGINE.unread(category);
+    }
+
+    public static List<PrivateConversation> recentPrivateConversations() {
+        return ENGINE.recentPrivateConversations();
     }
 
     public static String tabLabel(ChatCategory category) {
         String label = category.label();
         int unread = ENGINE.unread(category);
         if (category == ChatCategory.PRIVATE && unread > 0) {
-            label += " [" + Math.min(unread, 99) + (unread > 99 ? "+" : "") + "]";
+            label += " [" + compactUnread(unread) + "]";
         }
-        if (ENGINE.activeCategory() == category) {
-            return "[" + label + "]";
+        return label;
+    }
+
+    public static String privateTabLabel(PrivateConversation conversation) {
+        String label = shortenPlayerName(conversation.name(), 12);
+        if (conversation.unread() > 0) {
+            label += " [" + compactUnread(conversation.unread()) + "]";
         }
         return label;
     }
@@ -123,11 +164,39 @@ public final class OpsuchtChatMinecraft {
     }
 
     /**
+     * When a named PN tab is selected, plain text is sent directly to that player.
+     * Explicit slash commands continue to behave normally.
+     */
+    public static boolean handleActivePrivateInput(String input, boolean addToRecent) {
+        String partner = ENGINE.activePrivatePartner();
+        if (partner == null || input == null) {
+            return false;
+        }
+
+        String message = input.trim();
+        if (message.isEmpty() || message.startsWith("/")) {
+            return false;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.player == null || minecraft.player.connection == null) {
+            return false;
+        }
+
+        if (addToRecent && minecraft.gui != null && minecraft.gui.hud != null) {
+            minecraft.gui.hud.getChat().addRecentChat(input);
+        }
+
+        minecraft.player.connection.sendCommand("msg " + partner + " " + message);
+        return true;
+    }
+
+    /**
      * Local-only commands. They are consumed before Minecraft sends them to the server.
      */
     public static boolean handleLocalCommand(String input) {
         String command = input == null ? "" : input.trim();
-        if (!command.equalsIgnoreCase("/opschat") && !command.toLowerCase().startsWith("/opschat ")) {
+        if (!command.equalsIgnoreCase("/opschat") && !command.toLowerCase(Locale.ROOT).startsWith("/opschat ")) {
             return false;
         }
 
@@ -138,7 +207,7 @@ public final class OpsuchtChatMinecraft {
 
         String[] parts = command.split("\\s+");
         if (parts.length == 1 || (parts.length >= 2 && parts[1].equalsIgnoreCase("help"))) {
-            showOverlay("Opsucht Chat: /opschat debug | /opschat tab <all|pn|auktion|server|werbung>");
+            showOverlay("Opsucht Chat: /opschat debug | /opschat tab <all|msg|pn|auktion|server|werbung>");
             return true;
         }
 
@@ -155,7 +224,7 @@ public final class OpsuchtChatMinecraft {
                 select(category);
                 showOverlay("Opsucht Chat: " + category.label());
             } else {
-                showOverlay("Unbekannter Tab. all | pn | auktion | server | werbung");
+                showOverlay("Unbekannter Tab. all | msg | pn | auktion | server | werbung");
             }
             return true;
         }
@@ -165,8 +234,9 @@ public final class OpsuchtChatMinecraft {
     }
 
     private static ChatCategory parseCategory(String value) {
-        return switch (value.toLowerCase()) {
+        return switch (value.toLowerCase(Locale.ROOT)) {
             case "all" -> ChatCategory.ALL;
+            case "msg", "message", "chat" -> ChatCategory.MESSAGE;
             case "pn", "pm", "private", "privat" -> ChatCategory.PRIVATE;
             case "auktion", "auction" -> ChatCategory.AUCTION;
             case "server", "system" -> ChatCategory.SERVER;
@@ -211,6 +281,28 @@ public final class OpsuchtChatMinecraft {
             debugCapture = new DebugCapture(root.resolve("opsucht-chat").resolve("debug-chat.jsonl"));
         }
         return debugCapture;
+    }
+
+    private static void refreshChatView() {
+        installFilter();
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft != null && minecraft.gui != null && minecraft.gui.hud != null) {
+            minecraft.gui.hud.getChat().resetChatScroll();
+        }
+    }
+
+    private static String compactUnread(int unread) {
+        return unread > 99 ? "99+" : Integer.toString(unread);
+    }
+
+    private static String shortenPlayerName(String name, int maxChars) {
+        if (name == null || name.length() <= maxChars) {
+            return name == null ? "?" : name;
+        }
+        if (maxChars <= 1) {
+            return "…";
+        }
+        return name.substring(0, maxChars - 1) + "…";
     }
 
     private static void showOverlay(String text) {

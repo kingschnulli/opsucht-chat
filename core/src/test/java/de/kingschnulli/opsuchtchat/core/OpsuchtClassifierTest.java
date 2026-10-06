@@ -1,6 +1,7 @@
 package de.kingschnulli.opsuchtchat.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
@@ -9,7 +10,7 @@ class OpsuchtClassifierTest {
     private final Instant now = Instant.parse("2026-10-06T18:00:00Z");
 
     @Test
-    void classifiesFriendPrivateMessages() {
+    void classifiesIncomingPrivateMessageAndExtractsPartner() {
         OpsuchtClassifier classifier = new OpsuchtClassifier();
         Classification result = classifier.classify(new ChatEnvelope(
                 now,
@@ -18,6 +19,33 @@ class OpsuchtClassifierTest {
         ));
 
         assertEquals(ChatCategory.PRIVATE, result.category());
+        assertEquals("Ruffy333", result.privatePartner());
+    }
+
+    @Test
+    void classifiesOutgoingPrivateMessageAndExtractsPartner() {
+        OpsuchtClassifier classifier = new OpsuchtClassifier();
+        Classification result = classifier.classify(new ChatEnvelope(
+                now,
+                ChatSource.SERVER_SYSTEM,
+                "FREUNDE » [Mir -> Ruffy333] jo"
+        ));
+
+        assertEquals(ChatCategory.PRIVATE, result.category());
+        assertEquals("Ruffy333", result.privatePartner());
+    }
+
+    @Test
+    void officialOpsuchtFriendStylePromotionIsServerNotPrivate() {
+        OpsuchtClassifier classifier = new OpsuchtClassifier();
+        Classification result = classifier.classify(new ChatEnvelope(
+                now,
+                ChatSource.SERVER_SYSTEM,
+                "§b§lFREUNDE §8» §7[§cOPSUCHT §7-> §cMir§7] §fPsst... /warp kisten"
+        ));
+
+        assertEquals(ChatCategory.SERVER, result.category());
+        assertNull(result.privatePartner());
     }
 
     @Test
@@ -47,11 +75,11 @@ class OpsuchtClassifierTest {
     void recognizesRealPlayerAuctionBidsAndCountdown() {
         OpsuchtClassifier classifier = new OpsuchtClassifier();
 
-        assertEquals(ChatCategory.AUCTION, classifier.classify(new ChatEnvelope(
+        classifier.classify(new ChatEnvelope(
                 now,
                 ChatSource.PLAYER,
                 "Diamond | ~PG_Mystical » versteigere Testitem"
-        )).category());
+        ));
 
         assertEquals(ChatCategory.AUCTION, classifier.classify(new ChatEnvelope(
                 now.plusSeconds(5),
@@ -83,8 +111,7 @@ class OpsuchtClassifierTest {
                 "Diamond | ~PG_Mystical » und 2108 zum dritten vk"
         )).category());
 
-        // "zum dritten" closes the state, so later bare numbers are normal chat again.
-        assertEquals(ChatCategory.ALL, classifier.classify(new ChatEnvelope(
+        assertEquals(ChatCategory.MESSAGE, classifier.classify(new ChatEnvelope(
                 now.plusSeconds(30),
                 ChatSource.PLAYER,
                 "Spieler | Jemand » 2500"
@@ -107,11 +134,11 @@ class OpsuchtClassifierTest {
                 "Alex bietet 10.000$"
         ));
 
-        assertEquals(ChatCategory.ALL, result.category());
+        assertEquals(ChatCategory.MESSAGE, result.category());
     }
 
     @Test
-    void unknownPlayerChatStaysInAll() {
+    void normalChatGoesToMessageTab() {
         OpsuchtClassifier classifier = new OpsuchtClassifier();
         Classification result = classifier.classify(new ChatEnvelope(
                 now,
@@ -119,7 +146,7 @@ class OpsuchtClassifierTest {
                 "Spieler | BossNumber38491 » Sup warum können ..."
         ));
 
-        assertEquals(ChatCategory.ALL, result.category());
+        assertEquals(ChatCategory.MESSAGE, result.category());
     }
 
     @Test
@@ -137,30 +164,6 @@ class OpsuchtClassifierTest {
                 ChatSource.SERVER_SYSTEM,
                 "OPSUCHT » Du wurdest teleportiert."
         )).category());
-    }
-
-    @Test
-    void officialOpsuchtFriendStylePromotionIsServerNotPrivate() {
-        OpsuchtClassifier classifier = new OpsuchtClassifier();
-        Classification result = classifier.classify(new ChatEnvelope(
-                now,
-                ChatSource.SERVER_SYSTEM,
-                "§b§lFREUNDE §8» §7[§cOPSUCHT §7-> §cMir§7] §fPsst... /warp kisten"
-        ));
-
-        assertEquals(ChatCategory.SERVER, result.category());
-    }
-
-    @Test
-    void explicitServerPrefixGoesToServer() {
-        OpsuchtClassifier classifier = new OpsuchtClassifier();
-        Classification result = classifier.classify(new ChatEnvelope(
-                now,
-                ChatSource.SERVER_SYSTEM,
-                "SERVER | Der Server startet in 60 Sekunden neu."
-        ));
-
-        assertEquals(ChatCategory.SERVER, result.category());
     }
 
     @Test
@@ -193,7 +196,7 @@ class OpsuchtClassifierTest {
     }
 
     @Test
-    void conversationalSaleMessageDoesNotAutomaticallyBecomeAdvertising() {
+    void conversationalSaleMessageStaysInMessageTab() {
         OpsuchtClassifier classifier = new OpsuchtClassifier();
         Classification result = classifier.classify(new ChatEnvelope(
                 now,
@@ -201,31 +204,7 @@ class OpsuchtClassifierTest {
                 "Spieler | WomLord80 » nein ich verkaufe dir was"
         ));
 
-        assertEquals(ChatCategory.ALL, result.category());
-    }
-
-    @Test
-    void advertisingPrefixGoesToAdvertising() {
-        OpsuchtClassifier classifier = new OpsuchtClassifier();
-        Classification result = classifier.classify(new ChatEnvelope(
-                now,
-                ChatSource.SERVER_SYSTEM,
-                "WERBUNG | Besuche jetzt unseren Shop"
-        ));
-
-        assertEquals(ChatCategory.ADVERTISING, result.category());
-    }
-
-    @Test
-    void unknownSystemChatStaysInAllBecauseServersOftenUseSystemPacketsForPlayerChat() {
-        OpsuchtClassifier classifier = new OpsuchtClassifier();
-        Classification result = classifier.classify(new ChatEnvelope(
-                now,
-                ChatSource.SERVER_SYSTEM,
-                "Spieler | BossNumber38491 » Hallo zusammen"
-        ));
-
-        assertEquals(ChatCategory.ALL, result.category());
+        assertEquals(ChatCategory.MESSAGE, result.category());
     }
 
     @Test

@@ -2,6 +2,7 @@ package de.kingschnulli.opsuchtchat.core;
 
 public enum ChatCategory {
     ALL("ALL"),
+    MESSAGE("MSG"),
     PRIVATE("PN"),
     AUCTION("AUKTION"),
     SERVER("SERVER"),

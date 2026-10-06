@@ -56,6 +56,10 @@ public final class DebugCapture {
                 writer.write(classification.category().name());
                 writer.write("\",\"rule\":\"");
                 writer.write(escape(classification.ruleId()));
+                if (classification.privatePartner() != null) {
+                    writer.write("\",\"partner\":\"");
+                    writer.write(escape(classification.privatePartner()));
+                }
                 writer.write("\",\"text\":\"");
                 writer.write(escape(message.text()));
                 writer.write("\"}\n");

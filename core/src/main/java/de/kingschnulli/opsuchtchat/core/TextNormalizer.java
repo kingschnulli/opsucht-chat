@@ -7,8 +7,8 @@ final class TextNormalizer {
     private TextNormalizer() {
     }
 
-    static String normalize(String input) {
-        String value = Normalizer.normalize(input, Normalizer.Form.NFKC)
+    static String clean(String input) {
+        return Normalizer.normalize(input, Normalizer.Form.NFKC)
                 // Some Opsucht messages contain literal legacy Minecraft formatting
                 // codes inside the component text. They are visual metadata, not
                 // part of the message format we want to classify.
@@ -20,6 +20,9 @@ final class TextNormalizer {
                 .replace("\uFEFF", "")
                 .trim()
                 .replaceAll("\\s+", " ");
-        return value.toLowerCase(Locale.ROOT);
+    }
+
+    static String normalize(String input) {
+        return clean(input).toLowerCase(Locale.ROOT);
     }
 }
