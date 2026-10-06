@@ -9,6 +9,7 @@ import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerEventKind;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
 import de.kingschnulli.opsuchtchat.core.server.ChatServerAdapter;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -85,6 +86,28 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
         }
 
         return new PublicChatLine(rank, player, body);
+    }
+
+    @Override
+    public TextRange publicPlayerRange(String text) {
+        if (text == null) {
+            return null;
+        }
+
+        Matcher matcher = PUBLIC_CHAT.matcher(text);
+        if (!matcher.matches()) {
+            return null;
+        }
+
+        int start = matcher.start(2);
+        int end = matcher.end(2);
+        while (start < end && Character.isWhitespace(text.charAt(start))) {
+            start++;
+        }
+        while (end > start && Character.isWhitespace(text.charAt(end - 1))) {
+            end--;
+        }
+        return new TextRange(start, end);
     }
 
     @Override
