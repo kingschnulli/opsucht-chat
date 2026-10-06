@@ -236,6 +236,15 @@ public class ChatEngine {
         return messages == null ? List.of() : List.copyOf(messages);
     }
 
+    public synchronized List<PrivateMessageEntry> allPrivateMessages() {
+        List<PrivateMessageEntry> result = new ArrayList<>();
+        for (List<PrivateMessageEntry> messages : privateMessages.values()) {
+            result.addAll(messages);
+        }
+        result.sort(java.util.Comparator.comparing(PrivateMessageEntry::receivedAt));
+        return List.copyOf(result);
+    }
+
     public synchronized void resetTransientState() {
         activeCategory = ChatCategory.ALL;
         activePrivateKey = null;
