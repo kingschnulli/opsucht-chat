@@ -16,7 +16,9 @@ sourceSets.main.java.srcDir rootProject.file('minecraft/26.2/java')
 sourceSets.main.resources.srcDir rootProject.file('minecraft/26.2/resources')
 
 configurations {
-    include {
+    opsuchtCore {
+        canBeResolved = true
+        canBeConsumed = false
         transitive = false
     }
 }
@@ -25,7 +27,7 @@ dependencies {
     minecraft "com.mojang:minecraft:${minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
     implementation project(':core')
-    include project(':core')
+    opsuchtCore project(':core')
 }
 
 loom {
@@ -46,7 +48,7 @@ processResources {
 tasks.named('jar') {
     dependsOn ':core:jar'
     from {
-        configurations.include.collect { zipTree(it) }
+        configurations.opsuchtCore.collect { zipTree(it) }
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
