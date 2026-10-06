@@ -38,6 +38,12 @@ class OpsuchtPresentationTest {
         );
         assertEquals(ServerEventKind.ACTION, action.kind());
         assertEquals("/tpa <name>", action.action());
+
+        ServerFeedEvent proxy = adapter.parseServerEvent(
+                "This BungeeCord server does not provide recipes to JEI."
+        );
+        assertEquals(ServerEventKind.INFO, proxy.kind());
+        assertEquals("Client / Proxy", proxy.title());
     }
 
     @Test
