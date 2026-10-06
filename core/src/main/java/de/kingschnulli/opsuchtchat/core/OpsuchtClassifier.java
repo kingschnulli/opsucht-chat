@@ -20,13 +20,13 @@ public final class OpsuchtClassifier {
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
     );
     private static final Pattern PRIVATE_OUTGOING = Pattern.compile(
-            "\\bfreunde\\s*[»>]\\s*\\[\\s*mir\\s*(?:->|→)\\s*(.+?)\\s*]",
+            "\\bfreunde\\s*[»>]\\s*\\[\\s*(?:mir|du)\\s*(?:->|→)\\s*(.+?)\\s*]",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
     );
 
     private static final List<Pattern> PRIVATE_PATTERNS = patterns(
             "\\bfreunde\\s*[»>]\\s*\\[[^\\]]*(?:->|→)\\s*mir\\s*]",
-            "\\bfreunde\\s*[»>]\\s*\\[\\s*mir\\s*(?:->|→)[^\\]]*]",
+            "\\bfreunde\\s*[»>]\\s*\\[\\s*(?:mir|du)\\s*(?:->|→)[^\\]]*]",
             "^\\s*\\[(?:pn|pm|msg|privat)\\]",
             "^\\s*(?:pn|pm|privat)\\s*[»>:]"
     );
