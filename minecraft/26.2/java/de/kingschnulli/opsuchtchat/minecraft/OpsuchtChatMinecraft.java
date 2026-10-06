@@ -422,7 +422,7 @@ public final class OpsuchtChatMinecraft {
         }
 
         return engine.allPrivateMessages().stream()
-                .filter(socialStore::isImportant)
+                .filter(OpsuchtChatMinecraft::isImportant)
                 .sorted(Comparator.comparing(PrivateMessageEntry::receivedAt))
                 .toList();
     }
