@@ -32,6 +32,7 @@ import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
@@ -109,6 +110,8 @@ public abstract class ChatScreenMixin extends Screen {
     private final List<PrivateMessageHitbox> opsuchtChat$messageHitboxes = new ArrayList<>();
     @Unique
     private final List<FeedHitbox> opsuchtChat$feedHitboxes = new ArrayList<>();
+    @Unique
+    private final List<InteractiveTextLine> opsuchtChat$interactiveLines = new ArrayList<>();
 
     @Unique
     private FrameButton opsuchtChat$importantButton;
@@ -321,6 +324,23 @@ public abstract class ChatScreenMixin extends Screen {
                     return;
                 }
             }
+
+            Style clicked = opsuchtChat$interactiveStyleAt(mouseX, mouseY);
+            if (clicked != null) {
+                if (this.minecraft.hasShiftDown() && clicked.getInsertion() != null) {
+                    this.input.insertText(clicked.getInsertion());
+                    this.setInitialFocus(this.input);
+                    cir.setReturnValue(true);
+                    return;
+                }
+
+                ClickEvent clickEvent = clicked.getClickEvent();
+                if (clickEvent != null) {
+                    defaultHandleGameClickEvent(clickEvent, this.minecraft, this);
+                    cir.setReturnValue(true);
+                    return;
+                }
+            }
         }
     }
 
@@ -384,6 +404,7 @@ public abstract class ChatScreenMixin extends Screen {
     private void opsuchtChat$renderStructuredFeed(GuiGraphicsExtractor graphics, Font font) {
         opsuchtChat$feedHitboxes.clear();
         opsuchtChat$messageHitboxes.clear();
+        opsuchtChat$interactiveLines.clear();
 
         List<ChatViewMessage> messages = OpsuchtChatMinecraft.visibleFeedMessages();
         int x = OpsuchtChatMinecraft.frameX() + 6;
@@ -430,7 +451,10 @@ public abstract class ChatScreenMixin extends Screen {
         }
 
         if (entry.classification().category() == ChatCategory.AUCTION && entry.auctionEvent() != null) {
-            List<FormattedCharSequence> lines = font.split(Component.literal(entry.auctionEvent().body()), Math.max(40, width - 12));
+            List<FormattedCharSequence> lines = font.split(
+                    OpsuchtChatMinecraft.publicBodyComponent(entry),
+                    Math.max(40, width - 12)
+            );
             return new FeedLayout(entry, lines, 15 + Math.max(1, lines.size()) * 9 + 5);
         }
 
@@ -445,7 +469,7 @@ public abstract class ChatScreenMixin extends Screen {
 
         if (entry.publicChat() != null) {
             List<FormattedCharSequence> lines = font.split(
-                    Component.literal(entry.publicChat().body()),
+                    OpsuchtChatMinecraft.publicBodyComponent(entry),
                     Math.max(40, width - 22)
             );
             return new FeedLayout(entry, lines, 12 + Math.max(1, lines.size()) * 9 + 4);
@@ -489,7 +513,7 @@ public abstract class ChatScreenMixin extends Screen {
 
         int lineY = y + 1;
         for (FormattedCharSequence line : layout.lines()) {
-            graphics.text(font, line, x, lineY, TEXT, false);
+            opsuchtChat$renderInteractiveLine(graphics, line, x, lineY);
             lineY += 9;
         }
         return y + layout.height();
@@ -539,7 +563,7 @@ public abstract class ChatScreenMixin extends Screen {
 
         int lineY = y + 11;
         for (FormattedCharSequence line : lines) {
-            graphics.text(font, line, headerX, lineY, TEXT, false);
+            opsuchtChat$renderInteractiveLine(graphics, line, headerX, lineY);
             lineY += 9;
         }
     }
@@ -621,7 +645,7 @@ public abstract class ChatScreenMixin extends Screen {
 
         int lineY = y + 14;
         for (FormattedCharSequence line : lines) {
-            graphics.text(font, line, x + 7, lineY, TEXT, false);
+            opsuchtChat$renderInteractiveLine(graphics, line, x + 7, lineY);
             lineY += 9;
         }
     }
@@ -667,6 +691,7 @@ public abstract class ChatScreenMixin extends Screen {
     private void opsuchtChat$renderPrivateTranscript(GuiGraphicsExtractor graphics, Font font) {
         opsuchtChat$messageHitboxes.clear();
         opsuchtChat$feedHitboxes.clear();
+        opsuchtChat$interactiveLines.clear();
 
         int x = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.sidebarWidth() + 7;
         int right = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.frameWidth() - 6;
@@ -837,6 +862,34 @@ public abstract class ChatScreenMixin extends Screen {
             case SOLD -> GREEN;
             case OTHER -> MUTED;
         };
+    }
+
+    @Unique
+    private void opsuchtChat$renderInteractiveLine(
+            GuiGraphicsExtractor graphics,
+            FormattedCharSequence line,
+            int x,
+            int y
+    ) {
+        graphics.textRenderer(GuiGraphicsExtractor.HoveredTextEffects.TOOLTIP_AND_CURSOR).accept(x, y, line);
+        opsuchtChat$interactiveLines.add(new InteractiveTextLine(x, y, line));
+    }
+
+    @Unique
+    private Style opsuchtChat$interactiveStyleAt(int mouseX, int mouseY) {
+        if (opsuchtChat$interactiveLines.isEmpty()) {
+            return null;
+        }
+
+        ActiveTextCollector.ClickableStyleFinder finder =
+                new ActiveTextCollector.ClickableStyleFinder(this.font, mouseX, mouseY)
+                        .includeInsertions(this.minecraft.hasShiftDown());
+
+        for (InteractiveTextLine line : opsuchtChat$interactiveLines) {
+            finder.accept(line.x(), line.y(), line.text());
+        }
+
+        return finder.result();
     }
 
     @Unique
@@ -1239,6 +1292,14 @@ public abstract class ChatScreenMixin extends Screen {
             return;
         }
         graphics.fill(x, y, x + size, y + size, 0xFF225B73);
+    }
+
+    @Unique
+    private record InteractiveTextLine(
+            int x,
+            int y,
+            FormattedCharSequence text
+    ) {
     }
 
     @Unique
