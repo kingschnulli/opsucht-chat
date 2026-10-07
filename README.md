@@ -39,6 +39,8 @@ Links stehen die letzten Unterhaltungen, rechts der Verlauf des ausgewählten Sp
 - Ungelesen-Zähler
 - **★** Favorit/Pin
 - **×** zum Schließen; geschlossene Sessions bleiben bis zur nächsten Nachricht oder zum erneuten Öffnen verborgen
+- **+Freund** als server-spezifische Social-Aktion
+- **Pay** mit einem festen, nicht editierbaren `/pay <Spieler>`-Präfix; eingegeben wird nur noch der Betrag
 - lokale PN-Historie über Neustarts hinweg
 
 Wird eine Spieler-Unterhaltung geöffnet, wird normal eingegebener Text automatisch über den Server-Adapter als PN verschickt. Auf OPSUCHT entspricht das:
@@ -50,6 +52,8 @@ Wird eine Spieler-Unterhaltung geöffnet, wird normal eingegebener Text automati
 Explizite Slash-Commands bleiben unverändert.
 
 Einzelne PNs können per **Rechtsklick** mit ★ als wichtig markiert werden. Über den ★-Schalter im PN-Bereich können alle wichtigen PNs gemeinsam angezeigt werden.
+
+Auf OPSUCHT nutzt **+Freund** den offiziellen Befehl `/freund hinzufügen <Name>`. Freundschaftsanfragen selbst werden erst dann als Social-Ereignisse dargestellt, wenn dafür echte Servernachrichten im Testkorpus vorliegen; hier wird nichts geraten.
 
 ### Alias / echte Spieleridentität
 
