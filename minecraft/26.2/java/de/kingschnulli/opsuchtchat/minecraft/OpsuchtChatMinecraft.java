@@ -528,9 +528,8 @@ public final class OpsuchtChatMinecraft {
             }
         }
 
-        return serverCommandFavorites.stream()
-                .map(byId::get)
-                .filter(Objects::nonNull)
+        return byId.values().stream()
+                .filter(command -> serverCommandFavorites.contains(command.id()))
                 .toList();
     }
 
