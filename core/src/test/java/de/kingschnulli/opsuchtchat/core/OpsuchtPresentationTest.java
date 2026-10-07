@@ -8,7 +8,10 @@ import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerEventKind;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
+import de.kingschnulli.opsuchtchat.core.server.ServerCommandMode;
+import de.kingschnulli.opsuchtchat.core.server.ServerHubPage;
 import de.kingschnulli.opsuchtchat.core.server.opsucht.OpsuchtServerAdapter;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class OpsuchtPresentationTest {
@@ -77,6 +80,31 @@ class OpsuchtPresentationTest {
         assertEquals("freund", adapter.friendMenuCommand());
         assertEquals("freund anfragen", adapter.friendRequestsCommand());
         assertEquals("pay SkyDecaxy 5000", adapter.paymentCommand("SkyDecaxy", "5000"));
+    }
+
+    @Test
+    void exposesCommandHubPagesAndSafeInteractionModes() {
+        List<ServerHubPage> pages = adapter.serverHubPages();
+
+        assertEquals(
+                List.of("quick", "social", "travel", "economy", "home", "utility", "info"),
+                pages.stream().map(ServerHubPage::id).toList()
+        );
+
+        var pay = pages.stream()
+                .flatMap(page -> page.commands().stream())
+                .filter(command -> command.id().equals("pay"))
+                .findFirst()
+                .orElseThrow();
+        var spawn = pages.stream()
+                .flatMap(page -> page.commands().stream())
+                .filter(command -> command.id().equals("spawn"))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(ServerCommandMode.PREFILL, pay.mode());
+        assertEquals(ServerCommandMode.RUN, spawn.mode());
+        assertEquals(List.of("home", "spawn", "pay", "ah"), adapter.defaultServerCommandFavorites());
     }
 
     @Test
