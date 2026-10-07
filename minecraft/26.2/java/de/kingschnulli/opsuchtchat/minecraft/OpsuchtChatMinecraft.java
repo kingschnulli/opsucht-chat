@@ -15,6 +15,9 @@ import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
 import de.kingschnulli.opsuchtchat.core.server.ChatServerAdapter;
 import de.kingschnulli.opsuchtchat.core.server.ServerAdapterRegistry;
+import de.kingschnulli.opsuchtchat.core.server.ServerCommandMode;
+import de.kingschnulli.opsuchtchat.core.server.ServerCommandSpec;
+import de.kingschnulli.opsuchtchat.core.server.ServerHubPage;
 import de.kingschnulli.opsuchtchat.core.social.LocalSocialStore;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -71,6 +74,7 @@ public final class OpsuchtChatMinecraft {
     private static Map<String, String> aliasCache = Map.of();
     private static final Map<String, String> observedPublicAliases = new HashMap<>();
     private static final Set<String> importantMessageKeys = new HashSet<>();
+    private static final Set<String> serverCommandFavorites = new HashSet<>();
 
     private OpsuchtChatMinecraft() {
     }
@@ -120,14 +124,15 @@ public final class OpsuchtChatMinecraft {
     public static int frameWidth() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null) {
-            return activeCategory() == ChatCategory.PRIVATE ? SOCIAL_FRAME_MAX_WIDTH : FEED_FRAME_MAX_WIDTH;
+            boolean workspace = activeCategory() == ChatCategory.PRIVATE || activeCategory() == ChatCategory.SERVER;
+            return workspace ? SOCIAL_FRAME_MAX_WIDTH : FEED_FRAME_MAX_WIDTH;
         }
 
         int screenWidth = minecraft.getWindow().getGuiScaledWidth();
-        boolean social = activeCategory() == ChatCategory.PRIVATE;
-        int preferred = (int)Math.round(screenWidth * (social ? 0.58 : 0.36));
-        int min = social ? SOCIAL_FRAME_MIN_WIDTH : FEED_FRAME_MIN_WIDTH;
-        int max = social ? SOCIAL_FRAME_MAX_WIDTH : FEED_FRAME_MAX_WIDTH;
+        boolean workspace = activeCategory() == ChatCategory.PRIVATE || activeCategory() == ChatCategory.SERVER;
+        int preferred = (int)Math.round(screenWidth * (workspace ? 0.58 : 0.36));
+        int min = workspace ? SOCIAL_FRAME_MIN_WIDTH : FEED_FRAME_MIN_WIDTH;
+        int max = workspace ? SOCIAL_FRAME_MAX_WIDTH : FEED_FRAME_MAX_WIDTH;
         preferred = Math.max(min, Math.min(max, preferred));
         return Math.max(170, Math.min(screenWidth - FRAME_X * 2, preferred));
     }
@@ -147,9 +152,9 @@ public final class OpsuchtChatMinecraft {
         }
 
         int screenHeight = minecraft.getWindow().getGuiScaledHeight();
-        boolean social = activeCategory() == ChatCategory.PRIVATE;
-        int target = (int)Math.round(screenHeight * (social ? 0.56 : 0.38));
-        int max = Math.max(78, Math.min(social ? 190 : 125, screenHeight - 92));
+        boolean workspace = activeCategory() == ChatCategory.PRIVATE || activeCategory() == ChatCategory.SERVER;
+        int target = (int)Math.round(screenHeight * (workspace ? 0.56 : 0.38));
+        int max = Math.max(78, Math.min(workspace ? 190 : 125, screenHeight - 92));
         return Math.max(78, Math.min(max, target));
     }
 
@@ -169,6 +174,15 @@ public final class OpsuchtChatMinecraft {
 
         int frameWidth = frameWidth();
         return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, (int)Math.round(frameWidth * 0.34)));
+    }
+
+    public static int serverSidebarWidth() {
+        if (activeCategory() != ChatCategory.SERVER) {
+            return 0;
+        }
+
+        int frameWidth = frameWidth();
+        return Math.min(118, Math.max(92, (int)Math.round(frameWidth * 0.28)));
     }
 
     public static int chatRenderOffsetX() {
@@ -470,6 +484,99 @@ public final class OpsuchtChatMinecraft {
                     .filter(entry -> entry.classification().category() == active)
                     .toList();
         }
+    }
+
+    public static List<ServerHubPage> serverHubPages() {
+        ensureServerState();
+        return adapter == null ? List.of() : adapter.serverHubPages();
+    }
+
+    public static List<ServerCommandSpec> serverCommandsForPage(String pageId, String query) {
+        ensureServerState();
+        if (adapter == null) {
+            return List.of();
+        }
+
+        String normalizedPage = pageId == null ? "" : pageId.trim();
+        String normalizedQuery = query == null ? "" : query.trim();
+
+        if (!normalizedQuery.isBlank()) {
+            return adapter.serverHubPages().stream()
+                    .flatMap(page -> page.commands().stream())
+                    .filter(command -> command.matches(normalizedQuery))
+                    .distinct()
+                    .toList();
+        }
+
+        return adapter.serverHubPages().stream()
+                .filter(page -> page.id().equals(normalizedPage))
+                .findFirst()
+                .map(ServerHubPage::commands)
+                .orElse(List.of());
+    }
+
+    public static List<ServerCommandSpec> favoriteServerCommands() {
+        ensureServerState();
+        if (adapter == null) {
+            return List.of();
+        }
+
+        Map<String, ServerCommandSpec> byId = new java.util.LinkedHashMap<>();
+        for (ServerHubPage page : adapter.serverHubPages()) {
+            for (ServerCommandSpec command : page.commands()) {
+                byId.putIfAbsent(command.id(), command);
+            }
+        }
+
+        return serverCommandFavorites.stream()
+                .map(byId::get)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    public static boolean isServerCommandFavorite(String id) {
+        return id != null && serverCommandFavorites.contains(id);
+    }
+
+    public static boolean toggleServerCommandFavorite(String id) {
+        if (id == null || id.isBlank()) {
+            return false;
+        }
+
+        boolean favorite;
+        if (serverCommandFavorites.contains(id)) {
+            serverCommandFavorites.remove(id);
+            favorite = false;
+        } else {
+            serverCommandFavorites.add(id);
+            favorite = true;
+        }
+
+        if (socialStore != null) {
+            socialStore.saveCommandFavorites(serverCommandFavorites);
+        }
+        return favorite;
+    }
+
+    public static boolean executeServerCommand(ServerCommandSpec command) {
+        if (!isActive() || command == null || command.mode() != ServerCommandMode.RUN) {
+            return false;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.player == null || minecraft.player.connection == null) {
+            return false;
+        }
+
+        minecraft.player.connection.sendCommand(command.command());
+        return true;
+    }
+
+    public static String prefillServerCommand(ServerCommandSpec command) {
+        if (command == null) {
+            return "";
+        }
+        return "/" + command.command() + " ";
     }
 
     public static String resolvedPrivateTarget(String displayedName) {
@@ -798,6 +905,7 @@ public final class OpsuchtChatMinecraft {
         engine = adapter == null ? null : new ChatEngine(adapter);
         socialStore = null;
         importantMessageKeys.clear();
+        serverCommandFavorites.clear();
 
         if (adapter == null || engine == null) {
             return;
@@ -807,6 +915,13 @@ public final class OpsuchtChatMinecraft {
         aliasCache = socialStore.loadAliases();
         observedPublicAliases.clear();
         importantMessageKeys.addAll(socialStore.loadImportantMessageKeys());
+
+        if (socialStore.hasCommandFavoritesFile()) {
+            serverCommandFavorites.addAll(socialStore.loadCommandFavorites());
+        } else {
+            serverCommandFavorites.addAll(adapter.defaultServerCommandFavorites());
+            socialStore.saveCommandFavorites(serverCommandFavorites);
+        }
 
         if ("opsucht".equals(adapter.id())) {
             socialStore.importLegacyFavorites(rootDataDir().resolve("pinned-pn.txt"));
