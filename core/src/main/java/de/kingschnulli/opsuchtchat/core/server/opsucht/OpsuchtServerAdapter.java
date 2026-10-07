@@ -67,6 +67,21 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
     }
 
     @Override
+    public String friendAddCommand(String partner) {
+        return "freund hinzufügen " + partner;
+    }
+
+    @Override
+    public String friendMenuCommand() {
+        return "freund";
+    }
+
+    @Override
+    public String friendRequestsCommand() {
+        return "freund anfragen";
+    }
+
+    @Override
     public PublicChatLine parsePublicChat(String text) {
         if (text == null) {
             return null;
