@@ -11,6 +11,10 @@ import de.kingschnulli.opsuchtchat.core.presentation.ServerEventKind;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
 import de.kingschnulli.opsuchtchat.core.server.ChatServerAdapter;
+import de.kingschnulli.opsuchtchat.core.server.ServerCommandMode;
+import de.kingschnulli.opsuchtchat.core.server.ServerCommandSpec;
+import de.kingschnulli.opsuchtchat.core.server.ServerHubPage;
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -23,6 +27,130 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
             "(?i)(-?\\d[\\d.,]*)\\s*(\\$|dollar|k|kk|m|mio\\.?|b)?"
     );
     private static final Pattern ITEM = Pattern.compile("\\[([^\\]]+)]");
+
+    private static final List<ServerHubPage> HUB_PAGES = List.of(
+            new ServerHubPage("quick", "Schnell", List.of(
+                    run("home", "/home", "Homes öffnen", "home", List.of()),
+                    run("spawn", "/spawn", "Zum Spawn", "spawn", List.of()),
+                    prefill("pay", "/pay", "Spieler bezahlen", "pay", List.of()),
+                    run("ah", "/ah", "Auktionshaus", "auktionshaus", List.of("ah")),
+                    run("ec", "/ec", "Enderchest", "enderchest", List.of("ec")),
+                    run("freund", "/freund", "Freunde verwalten", "freund", List.of("freunde")),
+                    run("cb", "/cb", "CityBuild", "citybuild", List.of("cb")),
+                    run("jobs", "/jobs", "Jobs", "jobs", List.of("job")),
+                    run("farm", "/farm", "Farmwelten", "farm", List.of("farmserver")),
+                    run("plot", "/plot", "Plot-Menü", "plot", List.of("p")),
+                    run("bank", "/bank", "Bank", "bank", List.of()),
+                    run("wb", "/wb", "Werkbank", "werkbank", List.of("wb"))
+            )),
+            new ServerHubPage("social", "Sozial", List.of(
+                    run("freund", "/freund", "Freunde verwalten", "freund", List.of("freunde")),
+                    prefill("msg", "/msg", "Private Nachricht", "msg", List.of()),
+                    prefill("reply", "/r", "Letztem Kontakt antworten", "reply", List.of("r")),
+                    prefill("ignore", "/ignore", "Spieler ignorieren", "ignore", List.of()),
+                    run("msgtoggle", "/msgtoggle", "PN-Empfang einstellen", "msgtoggle", List.of()),
+                    prefill("tpa", "/tpa", "Teleport-Anfrage senden", "tpa", List.of()),
+                    prefill("tpahere", "/tpahere", "Spieler zu dir anfragen", "tpahere", List.of()),
+                    run("tpaccept", "/tpaccept", "TPA annehmen", "tpaccept", List.of("tpy", "tpyes", "tpaaccept")),
+                    run("tpadeny", "/tpadeny", "TPA ablehnen", "tpadeny", List.of("tpn", "tpno", "tpadecline")),
+                    run("tpatoggle", "/tpatoggle", "TPA-Empfang einstellen", "tpatoggle", List.of("tptoggle")),
+                    run("clan", "/clan", "Clan-Menü", "clan", List.of("c")),
+                    prefill("gift", "/gift", "Rang verschenken", "gift", List.of()),
+                    prefill("realname", "/realname", "Echten Namen prüfen", "realname", List.of())
+            )),
+            new ServerHubPage("travel", "Reisen", List.of(
+                    run("spawn", "/spawn", "Zum Spawn", "spawn", List.of()),
+                    run("citybuild", "/cb", "Zum CityBuild", "citybuild", List.of("cb")),
+                    run("lobby", "/lobby", "Zur Lobby", "lobby", List.of("l", "hub")),
+                    run("farm", "/farm", "Farmwelten", "farm", List.of("farmserver")),
+                    run("pvp", "/pvp", "PVP-Server", "pvp", List.of()),
+                    run("redstone", "/redstone", "Redstone-Welt", "redstone", List.of()),
+                    run("navigator", "/nav", "Server-Navigator", "navigator", List.of("nav", "server")),
+                    run("rtp", "/rtp", "Zufälliger Farmwelt-TP", "randomteleport", List.of("rtp")),
+                    run("sw", "/sw", "S-Warp Übersicht", "sw", List.of()),
+                    run("swarp", "/swarp", "S-Warp Hilfe", "swarp", List.of())
+            )),
+            new ServerHubPage("economy", "Wirtschaft", List.of(
+                    run("money", "/money", "Kontostand", "money", List.of()),
+                    prefill("pay", "/pay", "Spieler bezahlen", "pay", List.of()),
+                    run("ah", "/ah", "Auktionshaus", "auktionshaus", List.of("ah")),
+                    run("bank", "/bank", "Bank", "bank", List.of()),
+                    run("jobs", "/jobs", "Jobs", "jobs", List.of("job")),
+                    run("immo", "/immo", "Immobilienmarkt", "immo", List.of("im")),
+                    prefill("werbung", "/werbung", "Werbung senden", "werbung", List.of()),
+                    run("shopcreate", "/shopcreate", "Shopkiste erstellen", "shopcreate", List.of()),
+                    run("shopinfo", "/shopinfo", "Shopkiste prüfen", "shopinfo", List.of("sinfo")),
+                    run("shopupdate", "/shopupdate", "Shop/Rang aktualisieren", "shopupdate", List.of()),
+                    run("code", "/code", "Affiliate-System", "code", List.of()),
+                    run("rang", "/rang", "Rang-Shop", "rang", List.of())
+            )),
+            new ServerHubPage("home", "Zuhause", List.of(
+                    run("home", "/home", "Homes öffnen", "home", List.of()),
+                    prefill("sethome", "/sethome", "Home setzen", "sethome", List.of("home set")),
+                    prefill("delhome", "/delhome", "Home löschen", "delhome", List.of("home delete")),
+                    run("plot", "/plot", "Plot-Menü", "plot", List.of("p")),
+                    run("tresor", "/tresor", "Tresor", "tresor", List.of("safe")),
+                    run("umzug", "/umzug", "Umzug-Menü", "umzug", List.of())
+            )),
+            new ServerHubPage("utility", "Utility", List.of(
+                    run("anvil", "/anvil", "Amboss", "anvil", List.of()),
+                    prefill("armor", "/armor", "Rüstung ansehen", "armor", List.of("invsee armor")),
+                    run("booster", "/booster", "Booster-Menü", "booster", List.of()),
+                    run("cstoggle", "/cstoggle", "Shopkisten-Nachrichten", "cstoggle", List.of()),
+                    run("disguise", "/disguise", "Verwandlung", "disguise", List.of("dis")),
+                    run("emoji", "/emoji", "Emoji-Menü", "emoji", List.of("smiley")),
+                    run("ec", "/ec", "Enderchest", "enderchest", List.of("ec")),
+                    run("farben", "/farben", "Chatfarben", "farben", List.of("colorcodes", "chatcolor")),
+                    run("feed", "/feed", "Hunger auffüllen", "feed", List.of()),
+                    run("fly", "/fly", "Flugmodus", "fly", List.of()),
+                    run("hat", "/hat", "Item als Hut", "hat", List.of()),
+                    run("haustiere", "/pet", "Haustiere", "haustiere", List.of("pet")),
+                    run("heal", "/heal", "Leben auffüllen", "heal", List.of()),
+                    prefill("invsee", "/invsee", "Inventar ansehen", "inventorysee", List.of("invsee")),
+                    run("iteminfo", "/iteminfo", "Item-Informationen", "iteminfo", List.of("iinfo")),
+                    run("kit", "/kit", "Kits", "kit", List.of("kits")),
+                    run("kopieren", "/mapcopy", "Karte kopieren", "kopieren", List.of("kartekopieren", "mapcopy")),
+                    run("kompressor", "/kompressor", "Kompressor", "kompressor", List.of()),
+                    run("minion", "/minion", "Minion-Menü", "minion", List.of()),
+                    prefill("nick", "/nick", "Nickname setzen", "nick", List.of()),
+                    run("perks", "/perks", "Perks", "perks", List.of("perk")),
+                    run("prefix", "/prefix", "Prefix-Menü", "prefix", List.of()),
+                    prefill("rainbow", "/rainbow", "Regenbogen-Nachricht", "rainbow", List.of("rb")),
+                    prefill("rename", "/rename", "Item umbenennen", "rename", List.of()),
+                    prefill("sign", "/sign", "Item signieren", "sign", List.of()),
+                    prefill("skull", "/skull", "Spielerkopf holen", "skull", List.of("head")),
+                    run("smiley", "/smiley", "Emoji-Menü", "smiley", List.of("emoji")),
+                    run("trash", "/trash", "Mülleimer", "trash", List.of("disposal")),
+                    run("undis", "/undis", "Verwandlung beenden", "undis", List.of()),
+                    run("unnick", "/unnick", "Nickname entfernen", "unnick", List.of()),
+                    run("wb", "/wb", "Werkbank", "werkbank", List.of("wb"))
+            )),
+            new ServerHubPage("info", "Info", List.of(
+                    run("2fa", "/2fa", "2FA verwalten", "2fa", List.of()),
+                    run("belohnung", "/belohnung", "Belohnungen", "belohnung", List.of("belohnungen", "reward")),
+                    run("discord", "/discord", "Discord-Link", "discord", List.of("dc")),
+                    run("dlink", "/dlink", "Discord verknüpfen", "dlink", List.of("link")),
+                    run("dunlink", "/dunlink", "Discord-Verknüpfung lösen", "dunlink", List.of("unlink")),
+                    run("erfolge", "/erfolge", "Achievements", "erfolge", List.of("a", "achievement", "achievements")),
+                    run("geburtstag", "/geburtstag", "Geburtstags-Menü", "geburtstag", List.of()),
+                    run("instagram", "/instagram", "Instagram-Link", "instagram", List.of("insta")),
+                    run("online", "/online", "Spielzeit", "online", List.of("onlinetime", "spielzeit")),
+                    run("oppass", "/oppass", "OP Pass", "oppass", List.of("op")),
+                    run("regeln", "/regeln", "Regeln", "regeln", List.of("regel")),
+                    run("shop", "/shop", "Shop-Link", "shop", List.of("store")),
+                    run("skiptutorial", "/skiptutorial", "Tutorial überspringen", "skiptutorial", List.of()),
+                    run("teamspeak", "/teamspeak", "TeamSpeak", "teamspeak", List.of("ts3", "ts")),
+                    run("tutorial", "/tutorial", "Tutorial/Hilfe", "tutorial", List.of("hilfe")),
+                    run("twitter", "/twitter", "Twitter-Link", "twitter", List.of()),
+                    run("twitch", "/twitch", "Twitch-Link", "twitch", List.of()),
+                    run("unverify", "/unverify", "TeamSpeak-Verknüpfung lösen", "unverify", List.of()),
+                    run("verify", "/verify", "TeamSpeak verknüpfen", "verify", List.of()),
+                    run("vote", "/vote", "Vote-Seite", "vote", List.of()),
+                    run("wiki", "/wiki", "OPSUCHT Wiki", "wiki", List.of())
+            ))
+    );
+
+    private static final List<String> DEFAULT_FAVORITES = List.of("home", "spawn", "pay", "ah");
 
     private final OpsuchtClassifier classifier = new OpsuchtClassifier();
 
@@ -79,6 +207,16 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
     @Override
     public String friendRequestsCommand() {
         return "freund anfragen";
+    }
+
+    @Override
+    public List<ServerHubPage> serverHubPages() {
+        return HUB_PAGES;
+    }
+
+    @Override
+    public List<String> defaultServerCommandFavorites() {
+        return DEFAULT_FAVORITES;
     }
 
     @Override
@@ -174,7 +312,6 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
         if (bodyLower.contains("bungeecord") || bodyLower.contains("does not provide recipes to jei")) {
             return new ServerFeedEvent(ServerEventKind.INFO, "Client / Proxy", body, null);
         }
-
         if (body.startsWith("➜")) {
             String action = body.substring(1).trim();
             return new ServerFeedEvent(ServerEventKind.ACTION, "Befehl", action, action);
@@ -257,6 +394,26 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
             normalized = normalized.substring(1);
         }
         return normalized;
+    }
+
+    private static ServerCommandSpec run(
+            String id,
+            String label,
+            String description,
+            String command,
+            List<String> aliases
+    ) {
+        return new ServerCommandSpec(id, label, command, description, aliases, ServerCommandMode.RUN);
+    }
+
+    private static ServerCommandSpec prefill(
+            String id,
+            String label,
+            String description,
+            String command,
+            List<String> aliases
+    ) {
+        return new ServerCommandSpec(id, label, command, description, aliases, ServerCommandMode.PREFILL);
     }
 
     private static String clean(String value) {
