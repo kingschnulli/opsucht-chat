@@ -10,7 +10,7 @@ Das Ziel ist ein Chat, der sich weiterhin wie Minecraft anfühlt, aber die Dinge
 - **MSG** – normaler Spielerchat
 - **PN [x]** – Social-/Privatnachrichtenbereich mit eigenen Unterhaltungen
 - **AUKTION** – Auktionsstart, Gebote, Countdown und Abschluss
-- **SERVER** – strukturierte Server-/Systemmeldungen
+- **SERVER** – Server-Arbeitsbereich mit Meldungen und adapter-spezifischen Funktionen/Befehlen
 - **WERBUNG** – erkannte Werbung
 
 Unbekannte Nachrichten landen in **MSG** und bleiben zusätzlich in **ALL**. Eine unvollständige Regel kann deshalb keine Nachricht vollständig verschwinden lassen.
@@ -21,6 +21,8 @@ Wenn der Chat geöffnet ist, rendert Opsucht Chat einen eigenen Minecraft-artige
 
 - kompakter normaler Chat mit Skin, Rang, Spielername, Uhrzeit und Nachricht
 - echte Tabs statt überlagerter Vanilla-Buttons
+- SERVER mit linker Unter-Navigation: Meldungen plus adapter-definierte Funktionsseiten
+- adapter-spezifische Befehlssuche und lokale Befehls-Favoriten
 - Servermeldungen als typisierte Karten, z. B. Geld, Teleport, Vote, Markt, Job oder Booster
 - Auktionen als eigene Timeline mit START / GEBOT / COUNT / VERKAUFT
 - Scrollen direkt im aktiven Feed
@@ -74,7 +76,8 @@ Es gibt keine Telemetrie und keinen Upload. Social-Daten liegen ausschließlich 
         ├── private-messages.tsv
         ├── aliases.tsv
         ├── important-private.txt
-        └── closed-conversations.txt
+        ├── closed-conversations.txt
+        └── command-favorites.txt
 ```
 
 Der Debug-Logger ist standardmäßig aus und wird mit `/opschat debug` umgeschaltet.
@@ -147,7 +150,8 @@ Ein Server-Adapter definiert unter anderem:
 - Darstellung normaler Chatzeilen
 - strukturierte Server- und Auktionsereignisse
 - sichtbarer Spielername vs. echte Identität/Alias
-- PN- und später weitere server-spezifische Befehle
+- SERVER-Unterseiten samt Befehlskatalog und Standard-Favoriten
+- PN-, Freund-, Pay- und weitere server-spezifische Befehle
 
 Details für weitere Server stehen in [docs/ADAPTERS.md](docs/ADAPTERS.md).
 
