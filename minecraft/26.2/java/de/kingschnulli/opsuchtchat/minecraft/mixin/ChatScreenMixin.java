@@ -116,7 +116,13 @@ public abstract class ChatScreenMixin extends Screen {
     @Unique
     private FrameButton opsuchtChat$importantButton;
     @Unique
+    private FrameButton opsuchtChat$friendActionButton;
+    @Unique
+    private FrameButton opsuchtChat$payActionButton;
+    @Unique
     private boolean opsuchtChat$importantOnly;
+    @Unique
+    private boolean opsuchtChat$payMode;
     @Unique
     private int opsuchtChat$feedScroll;
 
@@ -137,6 +143,7 @@ public abstract class ChatScreenMixin extends Screen {
         opsuchtChat$addMainTabs();
         opsuchtChat$addPrivateSidebarButtons();
         opsuchtChat$addImportantButton();
+        opsuchtChat$addPrivateHeaderActions();
     }
 
     @Inject(method = "extractRenderState", at = @At("HEAD"))
@@ -154,6 +161,7 @@ public abstract class ChatScreenMixin extends Screen {
         opsuchtChat$positionInput();
         opsuchtChat$positionMainTabs();
         opsuchtChat$refreshPrivateSidebar();
+        opsuchtChat$refreshPrivateHeaderActions();
 
         int x = OpsuchtChatMinecraft.frameX();
         int width = OpsuchtChatMinecraft.frameWidth();
@@ -185,7 +193,12 @@ public abstract class ChatScreenMixin extends Screen {
             } else if (partner != null) {
                 int headerX = sidebarRight + 7;
                 opsuchtChat$renderFace(graphics, partner, headerX, top + 3, 14);
-                graphics.text(this.font, partner, headerX + 19, top + 5, TEXT, false);
+
+                int actionsLeft = right - 77;
+                int nameX = headerX + 19;
+                int nameWidth = Math.max(24, actionsLeft - nameX - 4);
+                String visibleName = opsuchtChat$clamp(this.font, partner, nameWidth);
+                graphics.text(this.font, visibleName, nameX, top + 5, TEXT, false);
 
                 PlayerInfo info = OpsuchtChatMinecraft.playerInfo(partner);
                 if (info != null) {
@@ -196,16 +209,26 @@ public abstract class ChatScreenMixin extends Screen {
             }
         }
 
-        if (this.input.getValue().isEmpty()) {
+        String payPartner = opsuchtChat$payMode ? OpsuchtChatMinecraft.activePrivatePartner() : null;
+        if (payPartner != null) {
+            String prefix = OpsuchtChatMinecraft.paymentPrefix(payPartner);
+            graphics.text(this.font, prefix, x + 7, inputTop + 4, GOLD, false);
+            if (this.input.getValue().isEmpty()) {
+                graphics.text(this.font, "Betrag", this.input.getX(), inputTop + 4, MUTED, false);
+            }
+        } else if (this.input.getValue().isEmpty()) {
             graphics.text(this.font, "Nachricht schreiben …", x + 7, inputTop + 4, MUTED, false);
         }
 
-        int contextLeft = right - INPUT_CONTEXT_WIDTH - 4;
+        int contextWidth = opsuchtChat$contextWidth();
+        int contextLeft = right - contextWidth - 4;
         graphics.fill(contextLeft, inputTop, right - 4, bottom - 4, PANEL_BG_ALT);
-        String context = opsuchtChat$importantOnly && OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE
-                ? "★ WICHTIG"
-                : OpsuchtChatMinecraft.inputContextLabel();
-        int contextX = contextLeft + Math.max(3, (INPUT_CONTEXT_WIDTH - this.font.width(context)) / 2);
+        String context = opsuchtChat$payMode
+                ? "PAY"
+                : (opsuchtChat$importantOnly && OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE
+                        ? "★ WICHTIG"
+                        : OpsuchtChatMinecraft.inputContextLabel());
+        int contextX = contextLeft + Math.max(3, (contextWidth - this.font.width(context)) / 2);
         graphics.text(this.font, context, contextX, inputTop + 4, TEXT, false);
     }
 
@@ -393,8 +416,25 @@ public abstract class ChatScreenMixin extends Screen {
 
     @Inject(method = "handleChatInput", at = @At("HEAD"), cancellable = true)
     private void opsuchtChat$handleLocalCommand(String message, boolean addToRecent, CallbackInfo ci) {
-        if (OpsuchtChatMinecraft.handleLocalCommand(message)
-                || OpsuchtChatMinecraft.handleActivePrivateInput(message, addToRecent)) {
+        if (OpsuchtChatMinecraft.handleLocalCommand(message)) {
+            opsuchtChat$payMode = false;
+            opsuchtChat$feedScroll = 0;
+            ci.cancel();
+            return;
+        }
+
+        String partner = OpsuchtChatMinecraft.activePrivatePartner();
+        if (opsuchtChat$payMode
+                && partner != null
+                && OpsuchtChatMinecraft.handlePaymentInput(partner, message, addToRecent)) {
+            opsuchtChat$payMode = false;
+            this.input.setValue("");
+            opsuchtChat$feedScroll = 0;
+            ci.cancel();
+            return;
+        }
+
+        if (OpsuchtChatMinecraft.handleActivePrivateInput(message, addToRecent)) {
             opsuchtChat$feedScroll = 0;
             ci.cancel();
         }
@@ -703,7 +743,7 @@ public abstract class ChatScreenMixin extends Screen {
         if (messages.isEmpty()) {
             String empty = opsuchtChat$importantOnly
                     ? "Noch keine wichtigen Nachrichten."
-                    : "Noch keine lokal gespeicherten Nachrichten.";
+                    : "Noch keine Nachrichten.";
             graphics.text(font, empty, x, top + 7, MUTED, false);
             return;
         }
@@ -893,6 +933,16 @@ public abstract class ChatScreenMixin extends Screen {
     }
 
     @Unique
+    private static String opsuchtChat$clamp(Font font, String value, int width) {
+        if (value == null || value.isEmpty() || font.width(value) <= width) {
+            return value == null ? "" : value;
+        }
+
+        String suffix = "...";
+        return font.plainSubstrByWidth(value, Math.max(1, width - font.width(suffix))) + suffix;
+    }
+
+    @Unique
     private static String firstLetter(String value) {
         if (value == null || value.isBlank()) {
             return "?";
@@ -911,8 +961,25 @@ public abstract class ChatScreenMixin extends Screen {
     private void opsuchtChat$positionInput() {
         int x = OpsuchtChatMinecraft.frameX();
         int width = OpsuchtChatMinecraft.frameWidth();
-        int inputWidth = Math.max(50, width - INPUT_CONTEXT_WIDTH - 17);
-        this.input.setRectangle(inputWidth, 13, x + 7, this.height - 20);
+        int contextWidth = opsuchtChat$contextWidth();
+        int inputX = x + 7;
+
+        String partner = opsuchtChat$payMode ? OpsuchtChatMinecraft.activePrivatePartner() : null;
+        if (partner != null) {
+            inputX += this.font.width(OpsuchtChatMinecraft.paymentPrefix(partner));
+        }
+
+        int rightEdge = x + width - contextWidth - 9;
+        int inputWidth = Math.max(34, rightEdge - inputX);
+
+        // ChatScreen's EditBox is borderless: its text baseline equals Y.
+        // Align it exactly with the placeholder/prefix baseline.
+        this.input.setRectangle(inputWidth, 12, inputX, this.height - 17);
+    }
+
+    @Unique
+    private int opsuchtChat$contextWidth() {
+        return opsuchtChat$payMode ? 38 : INPUT_CONTEXT_WIDTH;
     }
 
     @Unique
@@ -926,6 +993,7 @@ public abstract class ChatScreenMixin extends Screen {
                     Component.literal(OpsuchtChatMinecraft.tabLabel(category)),
                     ignored -> {
                         opsuchtChat$importantOnly = false;
+                        opsuchtChat$payMode = false;
                         opsuchtChat$feedScroll = 0;
                         OpsuchtChatMinecraft.select(category);
                     },
@@ -983,6 +1051,64 @@ public abstract class ChatScreenMixin extends Screen {
     }
 
     @Unique
+    private void opsuchtChat$addPrivateHeaderActions() {
+        opsuchtChat$friendActionButton = new FrameButton(
+                0, 0, 45, 14, Component.literal("+Freund"),
+                ignored -> {
+                    String partner = OpsuchtChatMinecraft.activePrivatePartner();
+                    if (partner != null) {
+                        OpsuchtChatMinecraft.requestFriend(partner);
+                        this.setInitialFocus(this.input);
+                    }
+                },
+                () -> false
+        );
+        opsuchtChat$friendActionButton.visible = false;
+        this.addRenderableWidget(opsuchtChat$friendActionButton);
+
+        opsuchtChat$payActionButton = new FrameButton(
+                0, 0, 28, 14, Component.literal("Pay"),
+                ignored -> {
+                    String partner = OpsuchtChatMinecraft.activePrivatePartner();
+                    if (partner != null) {
+                        opsuchtChat$payMode = !opsuchtChat$payMode;
+                        this.input.setValue("");
+                        this.setInitialFocus(this.input);
+                        opsuchtChat$positionInput();
+                    }
+                },
+                () -> opsuchtChat$payMode
+        );
+        opsuchtChat$payActionButton.visible = false;
+        this.addRenderableWidget(opsuchtChat$payActionButton);
+    }
+
+    @Unique
+    private void opsuchtChat$refreshPrivateHeaderActions() {
+        boolean visible = OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE
+                && !opsuchtChat$importantOnly
+                && OpsuchtChatMinecraft.activePrivatePartner() != null;
+
+        if (opsuchtChat$friendActionButton == null || opsuchtChat$payActionButton == null) {
+            return;
+        }
+
+        opsuchtChat$friendActionButton.visible = visible;
+        opsuchtChat$payActionButton.visible = visible;
+
+        if (!visible) {
+            opsuchtChat$payMode = false;
+            return;
+        }
+
+        int right = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.frameWidth() - 4;
+        int y = OpsuchtChatMinecraft.frameTop() + 2;
+
+        opsuchtChat$payActionButton.setRectangle(28, 14, right - 28, y);
+        opsuchtChat$friendActionButton.setRectangle(45, 14, right - 28 - 2 - 45, y);
+    }
+
+    @Unique
     private void opsuchtChat$addPrivateSidebarButtons() {
         for (int i = 0; i < PRIVATE_TAB_SLOTS; i++) {
             final int slot = i;
@@ -993,6 +1119,7 @@ public abstract class ChatScreenMixin extends Screen {
                         String partner = opsuchtChat$privatePartners[slot];
                         if (partner != null) {
                             opsuchtChat$importantOnly = false;
+                            opsuchtChat$payMode = false;
                             opsuchtChat$feedScroll = 0;
                             OpsuchtChatMinecraft.selectPrivatePartner(partner);
                         }
@@ -1027,6 +1154,7 @@ public abstract class ChatScreenMixin extends Screen {
                     ignored -> {
                         String partner = opsuchtChat$privatePartners[slot];
                         if (partner != null) {
+                            opsuchtChat$payMode = false;
                             OpsuchtChatMinecraft.closePrivatePartner(partner);
                         }
                     },
@@ -1081,7 +1209,8 @@ public abstract class ChatScreenMixin extends Screen {
                 PrivateConversation conversation = conversations.get(i);
                 opsuchtChat$privatePartners[i] = conversation.name();
 
-                row.setRectangle(rowWidth, CONVERSATION_ROW_HEIGHT - 1, x, y + i * CONVERSATION_ROW_HEIGHT);
+                int rowClickWidth = Math.max(28, rowWidth - 32);
+                row.setRectangle(rowClickWidth, CONVERSATION_ROW_HEIGHT - 1, x, y + i * CONVERSATION_ROW_HEIGHT);
                 row.setConversation(conversation);
 
                 pin.setRectangle(13, 13, x + rowWidth - 29, y + i * CONVERSATION_ROW_HEIGHT + 2);
@@ -1208,8 +1337,7 @@ public abstract class ChatScreenMixin extends Screen {
             opsuchtChat$renderFaceStatic(graphics, conversation.name(), avatarX, avatarY, 15);
 
             int textX = getX() + 23;
-            int actionReserve = 31;
-            int available = Math.max(18, getWidth() - 23 - actionReserve);
+            int available = Math.max(18, getWidth() - 25);
             String name = clamp(font, conversation.name(), available);
             graphics.text(font, name, textX, getY() + 3, TEXT, false);
 
@@ -1265,9 +1393,9 @@ public abstract class ChatScreenMixin extends Screen {
             int y,
             int size
     ) {
-        PlayerInfo info = OpsuchtChatMinecraft.playerInfo(player);
-        if (info != null) {
-            PlayerFaceExtractor.extractRenderState(graphics, info.getSkin(), x, y, size);
+        net.minecraft.world.entity.player.PlayerSkin skin = OpsuchtChatMinecraft.playerSkin(player);
+        if (skin != null) {
+            PlayerFaceExtractor.extractRenderState(graphics, skin, x, y, size);
             return;
         }
 
