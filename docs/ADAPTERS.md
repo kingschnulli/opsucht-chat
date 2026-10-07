@@ -46,9 +46,16 @@ Ein Adapter ist für folgende server-spezifische Dinge verantwortlich:
    - `identityBase(...)`
    - Beispiel OPSUCHT: `~PG_Mystical` und `.PG_Mystical` können auf dieselbe Identitätsbasis zeigen
 
-8. **Serverbefehle erzeugen**
+8. **SERVER-Arbeitsbereich definieren**
+   - `serverHubPages()`
+   - liefert nur Daten: Seiten, Befehle, Beschreibungen, Aliase und RUN/PREFILL-Modus
+   - `defaultServerCommandFavorites()`
+   - die Minecraft-UI bleibt für alle Adapter identisch
+
+9. **Serverbefehle erzeugen**
    - `privateMessageCommand(...)`
-   - optional `paymentCommand(...)`
+   - `paymentCommand(...)`
+   - optional Freund-/Social-Befehle
 
 ## Sicherheitsprinzip
 
