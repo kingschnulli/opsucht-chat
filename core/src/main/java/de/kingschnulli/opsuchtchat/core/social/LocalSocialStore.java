@@ -34,6 +34,7 @@ public final class LocalSocialStore {
     private final Path aliasesFile;
     private final Path importantMessagesFile;
     private final Path closedConversationsFile;
+    private final Path commandFavoritesFile;
 
     public LocalSocialStore(Path rootDirectory, String adapterId) {
         this.directory = rootDirectory.resolve("social").resolve(sanitize(adapterId));
@@ -42,6 +43,45 @@ public final class LocalSocialStore {
         this.aliasesFile = directory.resolve("aliases.tsv");
         this.importantMessagesFile = directory.resolve("important-private.txt");
         this.closedConversationsFile = directory.resolve("closed-conversations.txt");
+        this.commandFavoritesFile = directory.resolve("command-favorites.txt");
+    }
+
+    public boolean hasCommandFavoritesFile() {
+        return Files.isRegularFile(commandFavoritesFile);
+    }
+
+    public Set<String> loadCommandFavorites() {
+        if (!Files.isRegularFile(commandFavoritesFile)) {
+            return Set.of();
+        }
+
+        try {
+            Set<String> result = new LinkedHashSet<>();
+            for (String line : Files.readAllLines(commandFavoritesFile, StandardCharsets.UTF_8)) {
+                String value = line.trim();
+                if (!value.isEmpty()) {
+                    result.add(value);
+                }
+            }
+            return Set.copyOf(result);
+        } catch (IOException ignored) {
+            return Set.of();
+        }
+    }
+
+    public void saveCommandFavorites(Collection<String> favorites) {
+        try {
+            Files.createDirectories(directory);
+            Files.write(
+                    commandFavoritesFile,
+                    favorites.stream().map(String::trim).filter(value -> !value.isEmpty()).distinct().toList(),
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING
+            );
+        } catch (IOException ignored) {
+            // Command favorites are optional local state.
+        }
     }
 
     public List<String> loadFavorites() {
