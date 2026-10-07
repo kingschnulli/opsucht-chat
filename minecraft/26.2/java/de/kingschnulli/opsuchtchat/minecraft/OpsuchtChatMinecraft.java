@@ -42,6 +42,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
+import net.minecraft.world.entity.player.PlayerSkin;
+import net.minecraft.world.item.component.ResolvableProfile;
 
 public final class OpsuchtChatMinecraft {
     private static final String OPEN_PRIVATE_PREFIX = "/opschat pn ";
@@ -488,6 +490,27 @@ public final class OpsuchtChatMinecraft {
         return sliceComponent(entry.message().content(), range.start(), range.end());
     }
 
+    public static PlayerSkin playerSkin(String playerName) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || playerName == null || playerName.isBlank()) {
+            return null;
+        }
+
+        String target = resolvePrivateTarget(playerName);
+        PlayerInfo online = playerInfo(target);
+        if (online != null) {
+            return online.getSkin();
+        }
+
+        try {
+            return minecraft.playerSkinRenderCache()
+                    .getOrDefault(ResolvableProfile.createUnresolved(target))
+                    .playerSkin();
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
     public static PlayerInfo playerInfo(String playerName) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.getConnection() == null || playerName == null) {
@@ -574,6 +597,62 @@ public final class OpsuchtChatMinecraft {
         if (engine != null) {
             engine.resetTransientState();
         }
+    }
+
+    public static String paymentPrefix(String partner) {
+        if (!isActive() || partner == null || partner.isBlank()) {
+            return "/pay ";
+        }
+        return "/pay " + resolvePrivateTarget(partner) + " ";
+    }
+
+    public static boolean handlePaymentInput(String partner, String amount, boolean addToRecent) {
+        if (!isActive() || partner == null || amount == null) {
+            return false;
+        }
+
+        String value = amount.trim();
+        if (value.isEmpty() || value.startsWith("/")) {
+            return false;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.player == null || minecraft.player.connection == null) {
+            return false;
+        }
+
+        String target = resolvePrivateTarget(partner);
+        String command = adapter.paymentCommand(target, value);
+        if (command == null || command.isBlank()) {
+            return false;
+        }
+
+        if (addToRecent && minecraft.gui != null && minecraft.gui.hud != null) {
+            minecraft.gui.hud.getChat().addRecentChat("/" + command);
+        }
+
+        minecraft.player.connection.sendCommand(command);
+        return true;
+    }
+
+    public static boolean requestFriend(String partner) {
+        if (!isActive() || partner == null || partner.isBlank()) {
+            return false;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.player == null || minecraft.player.connection == null) {
+            return false;
+        }
+
+        String target = resolvePrivateTarget(partner);
+        String command = adapter.friendAddCommand(target);
+        if (command == null || command.isBlank()) {
+            return false;
+        }
+
+        minecraft.player.connection.sendCommand(command);
+        return true;
     }
 
     public static boolean handleActivePrivateInput(String input, boolean addToRecent) {
