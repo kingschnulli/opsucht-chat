@@ -33,6 +33,18 @@ public interface ChatServerAdapter {
         return "pay " + partner + " " + amount;
     }
 
+    default String friendAddCommand(String partner) {
+        return null;
+    }
+
+    default String friendMenuCommand() {
+        return null;
+    }
+
+    default String friendRequestsCommand() {
+        return null;
+    }
+
     default String extractPublicPlayerName(String text) {
         PublicChatLine parsed = parsePublicChat(text);
         return parsed == null ? null : parsed.player();
