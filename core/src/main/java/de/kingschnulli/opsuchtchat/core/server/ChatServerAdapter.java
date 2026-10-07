@@ -6,6 +6,7 @@ import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -43,6 +44,14 @@ public interface ChatServerAdapter {
 
     default String friendRequestsCommand() {
         return null;
+    }
+
+    default List<ServerHubPage> serverHubPages() {
+        return List.of();
+    }
+
+    default List<String> defaultServerCommandFavorites() {
+        return List.of();
     }
 
     default String extractPublicPlayerName(String text) {
