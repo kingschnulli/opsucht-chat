@@ -9,6 +9,9 @@ import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerEventKind;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
+import de.kingschnulli.opsuchtchat.core.server.ServerCommandMode;
+import de.kingschnulli.opsuchtchat.core.server.ServerCommandSpec;
+import de.kingschnulli.opsuchtchat.core.server.ServerHubPage;
 import de.kingschnulli.opsuchtchat.minecraft.ChatViewMessage;
 import de.kingschnulli.opsuchtchat.minecraft.OpsuchtChatMinecraft;
 import java.time.Instant;
@@ -120,6 +123,16 @@ public abstract class ChatScreenMixin extends Screen {
     @Unique
     private FrameButton opsuchtChat$payActionButton;
     @Unique
+    private final List<FrameButton> opsuchtChat$serverPageButtons = new ArrayList<>();
+    @Unique
+    private final List<ServerCommandHitbox> opsuchtChat$serverCommandHitboxes = new ArrayList<>();
+    @Unique
+    private EditBox opsuchtChat$serverSearchInput;
+    @Unique
+    private String opsuchtChat$serverPageId = "messages";
+    @Unique
+    private int opsuchtChat$serverCommandScroll;
+    @Unique
     private boolean opsuchtChat$importantOnly;
     @Unique
     private boolean opsuchtChat$payMode;
@@ -139,11 +152,13 @@ public abstract class ChatScreenMixin extends Screen {
             return;
         }
 
+        this.input.setCanLoseFocus(true);
         opsuchtChat$positionInput();
         opsuchtChat$addMainTabs();
         opsuchtChat$addPrivateSidebarButtons();
         opsuchtChat$addImportantButton();
         opsuchtChat$addPrivateHeaderActions();
+        opsuchtChat$addServerWorkspaceWidgets();
     }
 
     @Inject(method = "extractRenderState", at = @At("HEAD"))
@@ -162,6 +177,7 @@ public abstract class ChatScreenMixin extends Screen {
         opsuchtChat$positionMainTabs();
         opsuchtChat$refreshPrivateSidebar();
         opsuchtChat$refreshPrivateHeaderActions();
+        opsuchtChat$refreshServerWorkspaceWidgets();
 
         int x = OpsuchtChatMinecraft.frameX();
         int width = OpsuchtChatMinecraft.frameWidth();
@@ -206,6 +222,26 @@ public abstract class ChatScreenMixin extends Screen {
                 }
             } else {
                 graphics.text(this.font, "Unterhaltung auswählen", sidebarRight + 7, top + 5, MUTED, false);
+            }
+        }
+
+        if (OpsuchtChatMinecraft.activeCategory() == ChatCategory.SERVER) {
+            int sidebar = OpsuchtChatMinecraft.serverSidebarWidth();
+            int sidebarRight = x + sidebar;
+            graphics.fill(x + 1, top + 1, sidebarRight, messageBottom, PANEL_BG_ALT);
+            graphics.fill(sidebarRight, top + 1, sidebarRight + 1, messageBottom, BORDER);
+
+            if (!"messages".equals(opsuchtChat$serverPageId)) {
+                int searchX = sidebarRight + 7;
+                int searchY = top + 5;
+                int searchRight = right - 6;
+                graphics.fill(searchX, searchY, searchRight, searchY + 15, 0xE0181E25);
+                graphics.fill(searchX, searchY, searchRight, searchY + 1, BORDER);
+                graphics.fill(searchX, searchY + 14, searchRight, searchY + 15, BORDER);
+
+                if (opsuchtChat$serverSearchInput != null && opsuchtChat$serverSearchInput.getValue().isEmpty()) {
+                    graphics.text(this.font, "Befehl suchen ...", searchX + 4, searchY + 3, MUTED, false);
+                }
             }
         }
 
@@ -256,6 +292,8 @@ public abstract class ChatScreenMixin extends Screen {
 
         if (OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE) {
             opsuchtChat$renderPrivateTranscript(graphics, font);
+        } else if (OpsuchtChatMinecraft.activeCategory() == ChatCategory.SERVER) {
+            opsuchtChat$renderServerWorkspace(graphics, font);
         } else {
             opsuchtChat$renderStructuredFeed(graphics, font);
         }
@@ -324,6 +362,34 @@ public abstract class ChatScreenMixin extends Screen {
             }
         }
 
+        if (event.button() == 0
+                && OpsuchtChatMinecraft.activeCategory() == ChatCategory.SERVER
+                && !"messages".equals(opsuchtChat$serverPageId)) {
+            for (ServerCommandHitbox hitbox : opsuchtChat$serverCommandHitboxes) {
+                if (!hitbox.contains(mouseX, mouseY)) {
+                    continue;
+                }
+
+                if (hitbox.favoriteToggle()) {
+                    OpsuchtChatMinecraft.toggleServerCommandFavorite(hitbox.command().id());
+                    cir.setReturnValue(true);
+                    return;
+                }
+
+                if (hitbox.command().mode() == ServerCommandMode.PREFILL) {
+                    this.input.setValue(OpsuchtChatMinecraft.prefillServerCommand(hitbox.command()));
+                    this.input.moveCursorToEnd(false);
+                    this.setInitialFocus(this.input);
+                } else {
+                    OpsuchtChatMinecraft.executeServerCommand(hitbox.command());
+                    this.setInitialFocus(this.input);
+                }
+
+                cir.setReturnValue(true);
+                return;
+            }
+        }
+
         if (event.button() == 0) {
             for (FeedHitbox hitbox : opsuchtChat$feedHitboxes) {
                 if (!hitbox.contains(mouseX, mouseY)) {
@@ -387,6 +453,18 @@ public abstract class ChatScreenMixin extends Screen {
             return;
         }
 
+        if (OpsuchtChatMinecraft.activeCategory() == ChatCategory.SERVER
+                && !"messages".equals(opsuchtChat$serverPageId)) {
+            String query = opsuchtChat$serverSearchInput == null ? "" : opsuchtChat$serverSearchInput.getValue();
+            int count = OpsuchtChatMinecraft.serverCommandsForPage(opsuchtChat$serverPageId, query).size();
+            int rows = (count + 1) / 2;
+            int max = Math.max(0, rows - 1);
+            int delta = scrollY > 0 ? 2 : scrollY < 0 ? -2 : 0;
+            opsuchtChat$serverCommandScroll = Math.max(0, Math.min(max, opsuchtChat$serverCommandScroll + delta));
+            cir.setReturnValue(true);
+            return;
+        }
+
         int max;
         if (OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE) {
             List<PrivateMessageEntry> messages = opsuchtChat$privateSource();
@@ -447,7 +525,10 @@ public abstract class ChatScreenMixin extends Screen {
         opsuchtChat$interactiveLines.clear();
 
         List<ChatViewMessage> messages = OpsuchtChatMinecraft.visibleFeedMessages();
-        int x = OpsuchtChatMinecraft.frameX() + 6;
+        int x = OpsuchtChatMinecraft.frameX()
+                + (OpsuchtChatMinecraft.activeCategory() == ChatCategory.SERVER
+                        ? OpsuchtChatMinecraft.serverSidebarWidth() + 7
+                        : 6);
         int right = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.frameWidth() - 6;
         int top = OpsuchtChatMinecraft.frameTop() + 4;
         int bottom = OpsuchtChatMinecraft.messageBottom() - 4;
@@ -995,6 +1076,9 @@ public abstract class ChatScreenMixin extends Screen {
                         opsuchtChat$importantOnly = false;
                         opsuchtChat$payMode = false;
                         opsuchtChat$feedScroll = 0;
+                        if (category != ChatCategory.SERVER) {
+                            opsuchtChat$serverCommandScroll = 0;
+                        }
                         OpsuchtChatMinecraft.select(category);
                     },
                     () -> OpsuchtChatMinecraft.isCategorySelected(category)
@@ -1048,6 +1132,211 @@ public abstract class ChatScreenMixin extends Screen {
             button.setMessage(Component.literal(OpsuchtChatMinecraft.tabLabel(category)));
             x += width + TAB_GAP;
         }
+    }
+
+    @Unique
+    private void opsuchtChat$addServerWorkspaceWidgets() {
+        opsuchtChat$serverPageButtons.clear();
+
+        List<ServerHubPage> pages = OpsuchtChatMinecraft.serverHubPages();
+        opsuchtChat$serverPageButtons.add(opsuchtChat$addServerPageButton("messages", "Meldungen"));
+        for (ServerHubPage page : pages) {
+            opsuchtChat$serverPageButtons.add(opsuchtChat$addServerPageButton(page.id(), page.label()));
+        }
+
+        opsuchtChat$serverSearchInput = new EditBox(
+                this.font,
+                0,
+                0,
+                100,
+                13,
+                Component.literal("Server-Befehle suchen")
+        );
+        opsuchtChat$serverSearchInput.setMaxLength(64);
+        opsuchtChat$serverSearchInput.setBordered(false);
+        opsuchtChat$serverSearchInput.setCanLoseFocus(true);
+        opsuchtChat$serverSearchInput.setResponder(ignored -> opsuchtChat$serverCommandScroll = 0);
+        opsuchtChat$serverSearchInput.visible = false;
+        this.addRenderableWidget(opsuchtChat$serverSearchInput);
+    }
+
+    @Unique
+    private FrameButton opsuchtChat$addServerPageButton(String id, String label) {
+        FrameButton button = new FrameButton(
+                0, 0, 70, 18, Component.literal(label),
+                ignored -> {
+                    opsuchtChat$serverPageId = id;
+                    opsuchtChat$serverCommandScroll = 0;
+                    opsuchtChat$serverCommandHitboxes.clear();
+                    if (opsuchtChat$serverSearchInput != null) {
+                        opsuchtChat$serverSearchInput.setValue("");
+                    }
+                    this.setInitialFocus(this.input);
+                },
+                () -> id.equals(opsuchtChat$serverPageId)
+        );
+        button.visible = false;
+        this.addRenderableWidget(button);
+        return button;
+    }
+
+    @Unique
+    private void opsuchtChat$refreshServerWorkspaceWidgets() {
+        boolean visible = OpsuchtChatMinecraft.activeCategory() == ChatCategory.SERVER;
+        int x = OpsuchtChatMinecraft.frameX() + 3;
+        int y = OpsuchtChatMinecraft.frameTop() + 4;
+        int width = Math.max(72, OpsuchtChatMinecraft.serverSidebarWidth() - 6);
+
+        for (int i = 0; i < opsuchtChat$serverPageButtons.size(); i++) {
+            FrameButton button = opsuchtChat$serverPageButtons.get(i);
+            button.visible = visible;
+            if (visible) {
+                button.setRectangle(width, 18, x, y + i * 19);
+            }
+        }
+
+        if (opsuchtChat$serverSearchInput != null) {
+            boolean searchVisible = visible && !"messages".equals(opsuchtChat$serverPageId);
+            opsuchtChat$serverSearchInput.visible = searchVisible;
+
+            if (searchVisible) {
+                int searchX = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.serverSidebarWidth() + 11;
+                int searchY = OpsuchtChatMinecraft.frameTop() + 8;
+                int searchRight = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.frameWidth() - 10;
+                opsuchtChat$serverSearchInput.setRectangle(
+                        Math.max(60, searchRight - searchX),
+                        12,
+                        searchX,
+                        searchY
+                );
+            } else if (this.getFocused() == opsuchtChat$serverSearchInput) {
+                this.setInitialFocus(this.input);
+            }
+        }
+    }
+
+    @Unique
+    private void opsuchtChat$renderServerWorkspace(GuiGraphicsExtractor graphics, Font font) {
+        opsuchtChat$serverCommandHitboxes.clear();
+
+        if ("messages".equals(opsuchtChat$serverPageId)) {
+            opsuchtChat$renderStructuredFeed(graphics, font);
+            return;
+        }
+
+        int left = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.serverSidebarWidth() + 7;
+        int right = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.frameWidth() - 6;
+        int top = OpsuchtChatMinecraft.frameTop() + 25;
+        int bottom = OpsuchtChatMinecraft.messageBottom() - 4;
+
+        List<ServerCommandSpec> favorites = OpsuchtChatMinecraft.favoriteServerCommands();
+        int y = top;
+
+        if (!favorites.isEmpty()) {
+            graphics.text(font, "★ Favoriten", left, y, ACCENT, false);
+            y += 12;
+
+            int chipX = left;
+            int shown = 0;
+            for (ServerCommandSpec command : favorites) {
+                if (shown >= 4) {
+                    break;
+                }
+
+                int chipWidth = Math.min(58, Math.max(34, font.width(command.label()) + 12));
+                if (chipX + chipWidth > right) {
+                    break;
+                }
+
+                graphics.fill(chipX, y, chipX + chipWidth, y + 15, 0xD0212B34);
+                graphics.text(font, command.label(), chipX + 4, y + 3, TEXT, false);
+                opsuchtChat$serverCommandHitboxes.add(new ServerCommandHitbox(
+                        chipX, y, chipX + chipWidth, y + 15, command, false
+                ));
+                chipX += chipWidth + 3;
+                shown++;
+            }
+            y += 21;
+        }
+
+        String query = opsuchtChat$serverSearchInput == null ? "" : opsuchtChat$serverSearchInput.getValue();
+        String pageTitle = query == null || query.isBlank()
+                ? opsuchtChat$currentServerPageLabel()
+                : "Suche";
+        graphics.text(font, pageTitle, left, y, ACCENT, false);
+        y += 13;
+
+        List<ServerCommandSpec> commands =
+                OpsuchtChatMinecraft.serverCommandsForPage(opsuchtChat$serverPageId, query);
+
+        if (commands.isEmpty()) {
+            graphics.text(font, "Keine Befehle gefunden.", left, y + 4, MUTED, false);
+            return;
+        }
+
+        int gap = 4;
+        int columnWidth = Math.max(72, (right - left - gap) / 2);
+        int rowHeight = 20;
+        int visibleRows = Math.max(1, (bottom - y) / rowHeight);
+        int startRow = Math.min(opsuchtChat$serverCommandScroll, Math.max(0, (commands.size() + 1) / 2 - 1));
+        int startIndex = startRow * 2;
+
+        for (int row = 0; row < visibleRows; row++) {
+            for (int col = 0; col < 2; col++) {
+                int index = startIndex + row * 2 + col;
+                if (index >= commands.size()) {
+                    continue;
+                }
+
+                ServerCommandSpec command = commands.get(index);
+                int rowX = left + col * (columnWidth + gap);
+                int rowY = y + row * rowHeight;
+                int rowRight = rowX + columnWidth;
+
+                graphics.fill(rowX, rowY, rowRight, rowY + 17, 0xC81A222B);
+                graphics.fill(rowX, rowY, rowRight, rowY + 1, 0xAA425261);
+
+                int commandX = rowX + 4;
+                graphics.text(font, command.label(), commandX, rowY + 4, TEXT, false);
+
+                String description = opsuchtChat$clamp(
+                        font,
+                        command.description(),
+                        Math.max(20, columnWidth - font.width(command.label()) - 25)
+                );
+                int descriptionX = Math.min(rowRight - 18, commandX + font.width(command.label()) + 7);
+                graphics.text(font, description, descriptionX, rowY + 4, MUTED, false);
+
+                boolean favorite = OpsuchtChatMinecraft.isServerCommandFavorite(command.id());
+                String star = favorite ? "★" : "☆";
+                int starX = rowRight - font.width(star) - 4;
+                graphics.text(font, star, starX, rowY + 4, favorite ? GOLD : MUTED, false);
+
+                opsuchtChat$serverCommandHitboxes.add(new ServerCommandHitbox(
+                        rowX, rowY, starX - 2, rowY + 17, command, false
+                ));
+                opsuchtChat$serverCommandHitboxes.add(new ServerCommandHitbox(
+                        starX - 2, rowY, rowRight, rowY + 17, command, true
+                ));
+            }
+        }
+
+        if (startRow > 0) {
+            graphics.text(font, "↑", right - font.width("↑"), y, MUTED, false);
+        }
+        if (startIndex + visibleRows * 2 < commands.size()) {
+            graphics.text(font, "↓", right - font.width("↓"), bottom - 9, MUTED, false);
+        }
+    }
+
+    @Unique
+    private String opsuchtChat$currentServerPageLabel() {
+        for (ServerHubPage page : OpsuchtChatMinecraft.serverHubPages()) {
+            if (page.id().equals(opsuchtChat$serverPageId)) {
+                return page.label();
+            }
+        }
+        return "Server";
     }
 
     @Unique
@@ -1437,6 +1726,20 @@ public abstract class ChatScreenMixin extends Screen {
             int right,
             int bottom,
             PrivateMessageEntry message
+    ) {
+        private boolean contains(int x, int y) {
+            return x >= left && x < right && y >= top && y < bottom;
+        }
+    }
+
+    @Unique
+    private record ServerCommandHitbox(
+            int left,
+            int top,
+            int right,
+            int bottom,
+            ServerCommandSpec command,
+            boolean favoriteToggle
     ) {
         private boolean contains(int x, int y) {
             return x >= left && x < right && y >= top && y < bottom;
