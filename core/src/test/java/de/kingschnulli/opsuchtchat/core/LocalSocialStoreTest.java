@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -55,6 +56,16 @@ class LocalSocialStoreTest {
         assertTrue(store.isImportant(message));
         assertFalse(store.setImportant(message, false));
         assertFalse(store.isImportant(message));
+    }
+
+    @Test
+    void persistsAdapterCommandFavorites() {
+        LocalSocialStore store = new LocalSocialStore(temp, "opsucht");
+
+        assertFalse(store.hasCommandFavoritesFile());
+        store.saveCommandFavorites(List.of("home", "spawn", "pay"));
+        assertTrue(store.hasCommandFavoritesFile());
+        assertEquals(Set.of("home", "spawn", "pay"), store.loadCommandFavorites());
     }
 
     @Test
