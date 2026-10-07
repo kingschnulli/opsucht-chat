@@ -72,6 +72,14 @@ class OpsuchtPresentationTest {
     }
 
     @Test
+    void exposesOpsuchtSocialCommands() {
+        assertEquals("freund hinzufügen SkyDecaxy", adapter.friendAddCommand("SkyDecaxy"));
+        assertEquals("freund", adapter.friendMenuCommand());
+        assertEquals("freund anfragen", adapter.friendRequestsCommand());
+        assertEquals("pay SkyDecaxy 5000", adapter.paymentCommand("SkyDecaxy", "5000"));
+    }
+
+    @Test
     void opsuchtIdentityBaseHandlesPublicAliases() {
         assertEquals("pg_mystical", adapter.identityBase("~PG_Mystical"));
         assertEquals("pg_mystical", adapter.identityBase(".PG_Mystical"));
