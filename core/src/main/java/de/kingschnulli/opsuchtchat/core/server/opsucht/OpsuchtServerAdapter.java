@@ -286,6 +286,33 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
     }
 
     @Override
+    public TextRange serverBodyRange(String text) {
+        if (text == null || text.isEmpty()) {
+            return null;
+        }
+
+        String cleaned = clean(text);
+        String lower = cleaned.toLowerCase(Locale.ROOT);
+        int start = 0;
+
+        if (lower.startsWith("opsucht")) {
+            int separator = text.indexOf('»');
+            if (separator >= 0) {
+                start = separator + 1;
+            }
+        } else if (lower.startsWith("freunde") && lower.contains("opsucht")) {
+            int bracket = text.lastIndexOf(']');
+            if (bracket >= 0) {
+                start = bracket + 1;
+            }
+        }
+
+        start = skipLegacyFormattingAndWhitespace(text, start);
+        int end = trimLegacyFormattingAndWhitespaceEnd(text, text.length());
+        return new TextRange(Math.min(start, end), end);
+    }
+
+    @Override
     public ServerFeedEvent parseServerEvent(String text) {
         String cleaned = clean(text);
         if (cleaned.isBlank()) {
@@ -414,6 +441,40 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
             List<String> aliases
     ) {
         return new ServerCommandSpec(id, label, command, description, aliases, ServerCommandMode.PREFILL);
+    }
+
+    private static int skipLegacyFormattingAndWhitespace(String text, int start) {
+        int index = Math.max(0, start);
+        while (index < text.length()) {
+            char current = text.charAt(index);
+            if (Character.isWhitespace(current)) {
+                index++;
+                continue;
+            }
+            if (current == '§' && index + 1 < text.length()) {
+                index += 2;
+                continue;
+            }
+            break;
+        }
+        return index;
+    }
+
+    private static int trimLegacyFormattingAndWhitespaceEnd(String text, int end) {
+        int index = Math.min(text.length(), end);
+        while (index > 0) {
+            char current = text.charAt(index - 1);
+            if (Character.isWhitespace(current)) {
+                index--;
+                continue;
+            }
+            if (index >= 2 && text.charAt(index - 2) == '§') {
+                index -= 2;
+                continue;
+            }
+            break;
+        }
+        return index;
     }
 
     private static String clean(String value) {
