@@ -596,6 +596,22 @@ public final class OpsuchtChatMinecraft {
         return sliceComponent(entry.message().content(), range.start(), range.end());
     }
 
+    public static Component serverBodyComponent(ChatViewMessage entry) {
+        if (entry == null || adapter == null || entry.serverEvent() == null) {
+            return entry == null ? Component.empty() : entry.message().content();
+        }
+
+        String plain = entry.message().content().getString();
+        TextRange range = adapter.serverBodyRange(plain);
+        if (range == null) {
+            // Prefer the original component over a literal fallback so server-provided
+            // click/hover actions can never silently disappear in a generic adapter.
+            return entry.message().content();
+        }
+
+        return sliceComponent(entry.message().content(), range.start(), range.end());
+    }
+
     public static PlayerSkin playerSkin(String playerName) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || playerName == null || playerName.isBlank()) {
