@@ -11,6 +11,8 @@ import de.kingschnulli.opsuchtchat.core.presentation.ServerEventKind;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
 import de.kingschnulli.opsuchtchat.core.server.ChatServerAdapter;
+import de.kingschnulli.opsuchtchat.core.server.PlayerActionMode;
+import de.kingschnulli.opsuchtchat.core.server.PlayerActionSpec;
 import de.kingschnulli.opsuchtchat.core.server.ServerCommandMode;
 import de.kingschnulli.opsuchtchat.core.server.ServerCommandSpec;
 import de.kingschnulli.opsuchtchat.core.server.ServerHubPage;
@@ -207,6 +209,51 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
     @Override
     public String friendRequestsCommand() {
         return "freund anfragen";
+    }
+
+    @Override
+    public List<PlayerActionSpec> playerActions(String partner) {
+        if (partner == null || partner.isBlank()) {
+            return List.of();
+        }
+
+        return List.of(
+                new PlayerActionSpec(
+                        "friend",
+                        "+Freund",
+                        friendAddCommand(partner),
+                        PlayerActionMode.RUN,
+                        true
+                ),
+                new PlayerActionSpec(
+                        "pay",
+                        "Pay",
+                        paymentCommand(partner, ""),
+                        PlayerActionMode.PAY_AMOUNT,
+                        true
+                ),
+                new PlayerActionSpec(
+                        "tpa",
+                        "TPA",
+                        "tpa " + partner,
+                        PlayerActionMode.RUN,
+                        false
+                ),
+                new PlayerActionSpec(
+                        "ignore",
+                        "Ignorieren",
+                        "ignore " + partner,
+                        PlayerActionMode.RUN,
+                        false
+                ),
+                new PlayerActionSpec(
+                        "realname",
+                        "Realname",
+                        "realname " + partner,
+                        PlayerActionMode.RUN,
+                        false
+                )
+        );
     }
 
     @Override
