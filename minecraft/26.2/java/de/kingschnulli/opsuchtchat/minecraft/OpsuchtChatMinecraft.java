@@ -10,19 +10,25 @@ import de.kingschnulli.opsuchtchat.core.PrivateConversation;
 import de.kingschnulli.opsuchtchat.core.PrivateMessageDirection;
 import de.kingschnulli.opsuchtchat.core.PrivateMessageEntry;
 import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.AuctionSessionSnapshot;
+import de.kingschnulli.opsuchtchat.core.presentation.AuctionSessionTracker;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
 import de.kingschnulli.opsuchtchat.core.server.ChatServerAdapter;
+import de.kingschnulli.opsuchtchat.core.server.PlayerActionMode;
+import de.kingschnulli.opsuchtchat.core.server.PlayerActionSpec;
 import de.kingschnulli.opsuchtchat.core.server.ServerAdapterRegistry;
 import de.kingschnulli.opsuchtchat.core.server.ServerCommandMode;
 import de.kingschnulli.opsuchtchat.core.server.ServerCommandSpec;
 import de.kingschnulli.opsuchtchat.core.server.ServerHubPage;
 import de.kingschnulli.opsuchtchat.core.social.LocalSocialStore;
+import de.kingschnulli.opsuchtchat.core.social.PlayerIdentity;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -65,6 +71,7 @@ public final class OpsuchtChatMinecraft {
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final List<ChatViewMessage> FEED =
             Collections.synchronizedList(new ArrayList<>());
+    private static final AuctionSessionTracker AUCTION_TRACKER = new AuctionSessionTracker();
 
     private static ChatEngine engine;
     private static ChatServerAdapter adapter;
@@ -308,6 +315,9 @@ public final class OpsuchtChatMinecraft {
         AuctionFeedEvent auctionEvent = classification.category() == ChatCategory.AUCTION
                 ? adapter.parseAuctionEvent(message.content().getString())
                 : null;
+        if (auctionEvent != null) {
+            AUCTION_TRACKER.accept(auctionEvent);
+        }
 
         FEED.add(new ChatViewMessage(
                 envelope.receivedAt(),
@@ -612,6 +622,102 @@ public final class OpsuchtChatMinecraft {
         return sliceComponent(entry.message().content(), range.start(), range.end());
     }
 
+    public static PlayerIdentity playerIdentity(String displayedName) {
+        if (displayedName == null || displayedName.isBlank()) {
+            return null;
+        }
+
+        String canonical = resolvePrivateTarget(displayedName);
+        PlayerInfo info = playerInfo(canonical);
+        String uuid = info == null ? null : info.getProfile().id().toString();
+
+        List<String> aliases = new ArrayList<>();
+        for (Map.Entry<String, String> entry : aliasCache.entrySet()) {
+            if (entry.getValue().equalsIgnoreCase(canonical)) {
+                aliases.add(entry.getKey());
+            }
+        }
+        if (!displayedName.equalsIgnoreCase(canonical)
+                && aliases.stream().noneMatch(alias -> alias.equalsIgnoreCase(displayedName))) {
+            aliases.add(displayedName);
+        }
+
+        return new PlayerIdentity(
+                displayedName,
+                canonical,
+                uuid,
+                info != null,
+                aliases
+        );
+    }
+
+    public static List<PlayerActionSpec> playerActions(String displayedName) {
+        ensureServerState();
+        if (adapter == null || displayedName == null || displayedName.isBlank()) {
+            return List.of();
+        }
+        return adapter.playerActions(resolvePrivateTarget(displayedName));
+    }
+
+    public static boolean executePlayerAction(PlayerActionSpec action) {
+        if (!isActive() || action == null || action.mode() != PlayerActionMode.RUN) {
+            return false;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.player == null || minecraft.player.connection == null) {
+            return false;
+        }
+
+        String command = action.command();
+        if (command == null || command.isBlank()) {
+            return false;
+        }
+
+        minecraft.player.connection.sendCommand(command);
+        return true;
+    }
+
+    public static String prefillPlayerAction(PlayerActionSpec action) {
+        if (action == null || action.command() == null) {
+            return "";
+        }
+        return "/" + action.command() + (action.command().endsWith(" ") ? "" : " ");
+    }
+
+    public static List<ServerClickAction> serverClickActions(ChatViewMessage entry) {
+        if (entry == null || adapter == null || entry.serverEvent() == null) {
+            return List.of();
+        }
+
+        Map<ClickEvent, StringBuilder> labels = new LinkedHashMap<>();
+        for (Component part : entry.message().content().toFlatList()) {
+            ClickEvent click = part.getStyle().getClickEvent();
+            String text = part.getString();
+            if (click == null || text == null || text.isBlank()) {
+                continue;
+            }
+            labels.computeIfAbsent(click, ignored -> new StringBuilder()).append(text);
+        }
+
+        List<ServerClickAction> result = new ArrayList<>();
+        for (Map.Entry<ClickEvent, StringBuilder> clickable : labels.entrySet()) {
+            String label = adapter.serverClickActionLabel(
+                    entry.message().content().getString(),
+                    clickable.getValue().toString().trim()
+            );
+            if (label == null || label.isBlank()) {
+                label = "Aktion";
+            }
+            result.add(new ServerClickAction(label, clickable.getKey()));
+        }
+        return List.copyOf(result);
+    }
+
+    public static AuctionSessionSnapshot auctionSession() {
+        return AUCTION_TRACKER.snapshot();
+    }
+
     public static PlayerSkin playerSkin(String playerName) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || playerName == null || playerName.isBlank()) {
@@ -716,6 +822,7 @@ public final class OpsuchtChatMinecraft {
     public static void onChatCleared() {
         CLASSIFICATIONS.clear();
         FEED.clear();
+        AUCTION_TRACKER.reset();
         if (engine != null) {
             engine.resetTransientState();
         }
@@ -915,6 +1022,7 @@ public final class OpsuchtChatMinecraft {
         activeServerAddress = address;
         CLASSIFICATIONS.clear();
         FEED.clear();
+        AUCTION_TRACKER.reset();
 
         adapter = ServerAdapterRegistry.resolve(address);
         engine = adapter == null ? null : new ChatEngine(adapter);
