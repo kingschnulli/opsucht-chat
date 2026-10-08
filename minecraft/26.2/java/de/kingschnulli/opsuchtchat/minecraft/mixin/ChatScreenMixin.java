@@ -736,9 +736,11 @@ public abstract class ChatScreenMixin extends Screen {
     ) {
         ServerFeedEvent event = entry.serverEvent();
         int accent = serverColor(event.kind());
+        List<ServerClickAction> clickActions = OpsuchtChatMinecraft.serverClickActions(entry);
+        int cardHeight = 13 + Math.max(1, lines.size()) * 9 + 3 + (clickActions.isEmpty() ? 0 : 18);
 
-        graphics.fill(x, y, right, y + 13 + Math.max(1, lines.size()) * 9 + 3, CARD_BG);
-        graphics.fill(x, y, x + 2, y + 13 + Math.max(1, lines.size()) * 9 + 3, accent);
+        graphics.fill(x, y, right, y + cardHeight, CARD_BG);
+        graphics.fill(x, y, x + 2, y + cardHeight, accent);
 
         String label = serverLabel(event.kind());
         graphics.text(font, label, x + 6, y + 3, accent, false);
@@ -753,7 +755,6 @@ public abstract class ChatScreenMixin extends Screen {
             lineY += 9;
         }
 
-        List<ServerClickAction> clickActions = OpsuchtChatMinecraft.serverClickActions(entry);
         if (!clickActions.isEmpty()) {
             int actionX = x + 7;
             int actionY = lineY + 1;
