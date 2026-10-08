@@ -27,6 +27,9 @@ Wenn der Chat geöffnet ist, rendert Opsucht Chat einen eigenen Minecraft-artige
 - Auktionen als eigene Timeline mit START / GEBOT / COUNT / VERKAUFT
 - Scrollen direkt im aktiven Feed
 - Klick auf einen Spielernamen öffnet eine PN-Unterhaltung
+- Player-Identity-Layer trennt sichtbaren Alias, echten Namen, UUID/Online-Status und Skin
+- adapter-definierte Spieleraktionen: primäre Aktionen direkt am PN-Header, weitere im Kontextmenü
+- klickbare Serveraktionen bleiben erhalten und werden bei strukturierten Meldungen zusätzlich als Aktions-Chips dargestellt
 - anklickbare Server-Befehle werden sicher in die Eingabe übernommen und nicht automatisch ausgeführt
 
 Der geschlossene HUD-Chat bleibt bewusst möglichst nah an Minecraft. Der umfangreiche ChatFrame wird erst beim Öffnen des Chats aktiv.
@@ -41,7 +44,8 @@ Links stehen die letzten Unterhaltungen, rechts der Verlauf des ausgewählten Sp
 - Ungelesen-Zähler
 - **★** Favorit/Pin
 - **×** zum Schließen; geschlossene Sessions bleiben bis zur nächsten Nachricht oder zum erneuten Öffnen verborgen
-- **+Freund** als server-spezifische Social-Aktion
+- primäre, adapter-definierte Social-Aktionen direkt am Header
+- weitere Aktionen kompakt hinter `...`, z. B. TPA, Ignore oder Realname
 - **Pay** mit einem festen, nicht editierbaren `/pay <Spieler>`-Präfix; eingegeben wird nur noch der Betrag
 - lokale PN-Historie über Neustarts hinweg
 
@@ -80,7 +84,7 @@ Es gibt keine Telemetrie und keinen Upload. Social-Daten liegen ausschließlich 
         └── command-favorites.txt
 ```
 
-Der Debug-Logger ist standardmäßig aus und wird mit `/opschat debug` umgeschaltet.
+Der Debug-Logger ist standardmäßig aus und wird mit `/opschat debug` umgeschaltet. Zusätzlich zu `debug-chat.jsonl` entsteht dabei `debug-interactions.jsonl`; dort werden serverseitige Click-/Hover-Metadaten festgehalten. Genau dieser zweite Log ist für TPA-, Freundschafts- und andere interaktive Servermeldungen wichtig.
 
 ## Auktionen
 
@@ -90,7 +94,7 @@ Auktionen werden zustandsbehaftet erkannt. Der Parser merkt sich eine laufende A
 Auktionsstart -> Gebote -> zum ersten/zweiten/dritten -> verkauft
 ```
 
-Dadurch gehören auch reine Beträge wie `5.5k` zur Auktion, solange eine passende Session aktiv ist. Die Erkennung basiert auf echten OPSUCHT-Beispielen und wird mit einem Testkorpus abgesichert.
+Dadurch gehören auch reine Beträge wie `5.5k` zur Auktion, solange eine passende Session aktiv ist. Über dem Auktionsfeed wird eine kompakte Live-Zusammenfassung aus Item, Verkäufer, aktuellem Gebot/Bieter und Phase aufgebaut. Die Erkennung basiert auf echten OPSUCHT-Beispielen und wird mit einem Testkorpus abgesichert.
 
 ## Installation
 
