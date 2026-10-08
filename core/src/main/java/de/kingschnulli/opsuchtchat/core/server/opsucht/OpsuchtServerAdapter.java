@@ -363,14 +363,23 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
     public String serverClickActionLabel(String messageText, String clickableText) {
         String message = clean(messageText).toLowerCase(Locale.ROOT);
         String clickable = clean(clickableText);
+        String clickableLower = clickable.toLowerCase(Locale.ROOT);
 
-        if (message.contains("annehmen")) {
-            return "Annehmen";
-        }
-        if (message.contains("ablehnen")) {
+        if (clickableLower.contains("ablehn")) {
             return "Ablehnen";
         }
+        if (clickableLower.contains("annehm")) {
+            return "Annehmen";
+        }
         if (clickable.isBlank() || clickable.equalsIgnoreCase("hier")) {
+            boolean accept = message.contains("annehmen");
+            boolean deny = message.contains("ablehnen");
+            if (accept && !deny) {
+                return "Annehmen";
+            }
+            if (deny && !accept) {
+                return "Ablehnen";
+            }
             return "Aktion";
         }
         return clickable;
