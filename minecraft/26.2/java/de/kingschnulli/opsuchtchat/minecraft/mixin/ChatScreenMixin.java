@@ -567,7 +567,10 @@ public abstract class ChatScreenMixin extends Screen {
     @Unique
     private FeedLayout opsuchtChat$layoutFeed(Font font, ChatViewMessage entry, int width) {
         if (entry.classification().category() == ChatCategory.SERVER && entry.serverEvent() != null) {
-            List<FormattedCharSequence> lines = font.split(Component.literal(entry.serverEvent().body()), Math.max(40, width - 12));
+            List<FormattedCharSequence> lines = font.split(
+                    OpsuchtChatMinecraft.serverBodyComponent(entry),
+                    Math.max(40, width - 12)
+            );
             return new FeedLayout(entry, lines, 15 + Math.max(1, lines.size()) * 9 + 5);
         }
 
@@ -714,7 +717,7 @@ public abstract class ChatScreenMixin extends Screen {
 
         int lineY = y + 14;
         for (FormattedCharSequence line : lines) {
-            graphics.text(font, line, x + 7, lineY, TEXT, false);
+            opsuchtChat$renderInteractiveLine(graphics, line, x + 7, lineY);
             lineY += 9;
         }
 
