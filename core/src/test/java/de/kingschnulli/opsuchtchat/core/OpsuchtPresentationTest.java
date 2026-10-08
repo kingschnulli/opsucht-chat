@@ -8,6 +8,8 @@ import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerEventKind;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.AuctionSessionTracker;
+import de.kingschnulli.opsuchtchat.core.server.PlayerActionMode;
 import de.kingschnulli.opsuchtchat.core.server.ServerCommandMode;
 import de.kingschnulli.opsuchtchat.core.server.ServerHubPage;
 import de.kingschnulli.opsuchtchat.core.server.opsucht.OpsuchtServerAdapter;
@@ -100,6 +102,37 @@ class OpsuchtPresentationTest {
         assertEquals("freund", adapter.friendMenuCommand());
         assertEquals("freund anfragen", adapter.friendRequestsCommand());
         assertEquals("pay SkyDecaxy 5000", adapter.paymentCommand("SkyDecaxy", "5000"));
+    }
+
+    @Test
+    void exposesContextualPlayerActions() {
+        var actions = adapter.playerActions("SkyDecaxy");
+
+        assertEquals(
+                List.of("friend", "pay", "tpa", "ignore", "realname"),
+                actions.stream().map(action -> action.id()).toList()
+        );
+        assertEquals(PlayerActionMode.PAY_AMOUNT, actions.get(1).mode());
+        assertEquals("tpa SkyDecaxy", actions.get(2).command());
+    }
+
+    @Test
+    void tracksAuctionSessionSummary() {
+        AuctionSessionTracker tracker = new AuctionSessionTracker();
+
+        tracker.accept(adapter.parseAuctionEvent(
+                "PLATIN | Kingschnulli » Versteigere [OPSUCHT Kaffeetasse] - start 1$"
+        ));
+        tracker.accept(adapter.parseAuctionEvent(
+                "Diamond | JustiniusOG » 5.5k"
+        ));
+
+        var snapshot = tracker.snapshot();
+        assertEquals(true, snapshot.active());
+        assertEquals("Kingschnulli", snapshot.seller());
+        assertEquals("OPSUCHT Kaffeetasse", snapshot.item());
+        assertEquals("JustiniusOG", snapshot.currentBidder());
+        assertEquals("5.5k", snapshot.currentAmount());
     }
 
     @Test
