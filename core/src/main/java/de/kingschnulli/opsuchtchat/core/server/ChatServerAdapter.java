@@ -79,6 +79,10 @@ public interface ChatServerAdapter {
         return null;
     }
 
+    default String serverClickActionLabel(String messageText, String clickableText) {
+        return clickableText;
+    }
+
     default ServerFeedEvent parseServerEvent(String text) {
         return null;
     }
