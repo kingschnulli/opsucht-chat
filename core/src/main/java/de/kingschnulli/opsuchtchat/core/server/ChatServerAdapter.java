@@ -54,6 +54,10 @@ public interface ChatServerAdapter {
         return List.of();
     }
 
+    default List<PlayerActionSpec> playerActions(String partner) {
+        return List.of();
+    }
+
     default String extractPublicPlayerName(String text) {
         PublicChatLine parsed = parsePublicChat(text);
         return parsed == null ? null : parsed.player();
