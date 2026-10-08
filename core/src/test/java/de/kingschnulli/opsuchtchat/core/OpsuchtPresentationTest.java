@@ -30,6 +30,26 @@ class OpsuchtPresentationTest {
     }
 
     @Test
+    void exposesServerBodyRangeWithoutDroppingInteractiveText() {
+        String raw = "§c§lOPSUCHT§r §8»§r §7§fSpielerX hat dir eine Teleport-Anfrage geschickt. Klicke hier zum Annehmen.";
+        var range = adapter.serverBodyRange(raw);
+
+        assertNotNull(range);
+        assertEquals(
+                "SpielerX hat dir eine Teleport-Anfrage geschickt. Klicke hier zum Annehmen.",
+                raw.substring(range.start(), range.end()).replaceAll("(?i)§[0-9A-FK-ORX]", "")
+        );
+
+        String friendStyle = "§b§lFREUNDE §8» §7[§cOPSUCHT §7-> §cMir§7] §fPsst... /warp kisten";
+        var friendRange = adapter.serverBodyRange(friendStyle);
+        assertNotNull(friendRange);
+        assertEquals(
+                "Psst... /warp kisten",
+                friendStyle.substring(friendRange.start(), friendRange.end()).replaceAll("(?i)§[0-9A-FK-ORX]", "")
+        );
+    }
+
+    @Test
     void parsesServerPaymentsAndCommands() {
         ServerFeedEvent money = adapter.parseServerEvent(
                 "OPSUCHT » .EinfachJohn9215 hat dir 5.500$ gegeben."
