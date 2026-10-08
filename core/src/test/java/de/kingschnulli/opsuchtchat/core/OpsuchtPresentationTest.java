@@ -52,6 +52,24 @@ class OpsuchtPresentationTest {
     }
 
     @Test
+    void labelsInteractiveServerActions() {
+        assertEquals(
+                "Annehmen",
+                adapter.serverClickActionLabel(
+                        "SpielerX hat dir eine Teleport-Anfrage geschickt. Klicke hier zum Annehmen.",
+                        "hier"
+                )
+        );
+        assertEquals(
+                "Ablehnen",
+                adapter.serverClickActionLabel(
+                        "Klicke Ablehnen, wenn du die Anfrage nicht möchtest.",
+                        "Ablehnen"
+                )
+        );
+    }
+
+    @Test
     void parsesServerPaymentsAndCommands() {
         ServerFeedEvent money = adapter.parseServerEvent(
                 "OPSUCHT » .EinfachJohn9215 hat dir 5.500$ gegeben."
