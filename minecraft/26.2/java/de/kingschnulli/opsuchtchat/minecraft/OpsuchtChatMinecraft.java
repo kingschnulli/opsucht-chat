@@ -78,6 +78,7 @@ public final class OpsuchtChatMinecraft {
     private static LocalSocialStore socialStore;
     private static String activeServerAddress;
     private static DebugCapture debugCapture;
+    private static InteractionDebugCapture interactionDebugCapture;
     private static Map<String, String> aliasCache = Map.of();
     private static final Map<String, String> observedPublicAliases = new HashMap<>();
     private static final Set<String> importantMessageKeys = new HashSet<>();
@@ -307,6 +308,9 @@ public final class OpsuchtChatMinecraft {
         Classification classification = engine.onIncoming(envelope);
         CLASSIFICATIONS.put(message, classification);
         debugCapture().append(envelope, classification);
+        if (debugCapture().enabled()) {
+            interactionDebugCapture().append(message);
+        }
 
         PublicChatLine publicChat = adapter.parsePublicChat(message.content().getString());
         ServerFeedEvent serverEvent = classification.category() == ChatCategory.SERVER
@@ -932,7 +936,9 @@ public final class OpsuchtChatMinecraft {
         if (parts[1].equalsIgnoreCase("debug")) {
             boolean enabled = debugCapture().toggle();
             String file = debugCapture().outputFile().toAbsolutePath().toString();
-            showOverlay(enabled ? "Opsucht Chat Debug AN: " + file : "Opsucht Chat Debug AUS");
+            showOverlay(enabled
+                    ? "Opsucht Chat Debug AN: " + file + " + debug-interactions.jsonl"
+                    : "Opsucht Chat Debug AUS");
             return true;
         }
 
@@ -1000,6 +1006,15 @@ public final class OpsuchtChatMinecraft {
             debugCapture = new DebugCapture(rootDataDir().resolve("debug-chat.jsonl"));
         }
         return debugCapture;
+    }
+
+    private static InteractionDebugCapture interactionDebugCapture() {
+        if (interactionDebugCapture == null) {
+            interactionDebugCapture = new InteractionDebugCapture(
+                    rootDataDir().resolve("debug-interactions.jsonl")
+            );
+        }
+        return interactionDebugCapture;
     }
 
     private static Path rootDataDir() {
