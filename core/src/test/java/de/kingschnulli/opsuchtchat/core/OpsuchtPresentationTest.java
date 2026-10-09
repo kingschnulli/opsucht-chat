@@ -199,9 +199,16 @@ class OpsuchtPresentationTest {
                 .filter(command -> command.id().equals("spawn"))
                 .findFirst()
                 .orElseThrow();
+        var market = pages.stream()
+                .flatMap(page -> page.commands().stream())
+                .filter(command -> command.id().equals("markt"))
+                .findFirst()
+                .orElseThrow();
 
         assertEquals(ServerCommandMode.PREFILL, pay.mode());
         assertEquals(ServerCommandMode.RUN, spawn.mode());
+        assertEquals("/markt", market.label());
+        assertEquals(List.of("marktplatz"), market.aliases());
         assertEquals(List.of("home", "spawn", "pay", "ah"), adapter.defaultServerCommandFavorites());
     }
 
