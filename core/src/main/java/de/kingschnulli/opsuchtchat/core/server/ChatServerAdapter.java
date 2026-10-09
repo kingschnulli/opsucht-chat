@@ -92,6 +92,10 @@ public interface ChatServerAdapter {
         return null;
     }
 
+    default SocialFeedEvent parseSocialEvent(String text, List<String> interactionCommands) {
+        return parseSocialEvent(text);
+    }
+
     default AuctionFeedEvent parseAuctionEvent(String text) {
         return null;
     }
