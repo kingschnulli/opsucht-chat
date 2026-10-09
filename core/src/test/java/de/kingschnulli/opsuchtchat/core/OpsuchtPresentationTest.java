@@ -66,6 +66,16 @@ class OpsuchtPresentationTest {
                 null,
                 adapter.parseSocialEvent("OPSUCHT » Du wurdest zum Spawn teleportiert.")
         );
+
+        var fromClickAction = adapter.parseSocialEvent(
+                "OPSUCHT » Eine Anfrage wartet auf deine Entscheidung.",
+                List.of("/tpaccept")
+        );
+        assertNotNull(fromClickAction);
+        assertEquals(
+                de.kingschnulli.opsuchtchat.core.presentation.SocialEventKind.TELEPORT_REQUEST,
+                fromClickAction.kind()
+        );
     }
 
     @Test
