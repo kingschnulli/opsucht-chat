@@ -79,6 +79,20 @@ class OpsuchtPresentationTest {
     }
 
     @Test
+    void parsesAcceptedFriendRequestAsSocialEvent() {
+        var accepted = adapter.parseSocialEvent(
+                "FREUNDE » Kater_kurumi hat deine Freundschafts-Anfrage angenommen"
+        );
+
+        assertNotNull(accepted);
+        assertEquals(
+                de.kingschnulli.opsuchtchat.core.presentation.SocialEventKind.FRIEND_ACCEPTED,
+                accepted.kind()
+        );
+        assertEquals("Kater_kurumi", accepted.actor());
+    }
+
+    @Test
     void labelsInteractiveServerActions() {
         assertEquals(
                 "Annehmen",
