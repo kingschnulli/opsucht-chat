@@ -87,6 +87,7 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
                     run("bank", "/bank", "Bank", "bank", List.of()),
                     run("jobs", "/jobs", "Jobs", "jobs", List.of("job")),
                     run("immo", "/immo", "Immobilienmarkt", "immo", List.of("im")),
+                    run("markt", "/markt", "Marktplatz", "markt", List.of("marktplatz")),
                     prefill("werbung", "/werbung", "Werbung senden", "werbung", List.of()),
                     run("shopcreate", "/shopcreate", "Shopkiste erstellen", "shopcreate", List.of()),
                     run("shopinfo", "/shopinfo", "Shopkiste prüfen", "shopinfo", List.of("sinfo")),
