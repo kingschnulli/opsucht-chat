@@ -486,21 +486,44 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
             return null;
         }
 
-        String actor = null;
-        Matcher actorMatcher = TPA_ACTOR.matcher(body);
-        if (actorMatcher.find()) {
-            actor = actorMatcher.group(1);
-        } else {
-            Matcher reversed = TPA_ACTOR_REVERSED.matcher(body);
-            if (reversed.find()) {
-                actor = reversed.group(1);
-            }
-        }
+        String actor = extractTeleportActor(body);
 
         return new SocialFeedEvent(
                 SocialEventKind.TELEPORT_REQUEST,
                 actor,
                 actor == null ? "Teleport-Anfrage" : "Teleport-Anfrage · " + actor,
+                body
+        );
+    }
+
+    @Override
+    public SocialFeedEvent parseSocialEvent(String text, List<String> interactionCommands) {
+        SocialFeedEvent fromText = parseSocialEvent(text);
+        if (fromText != null) {
+            return fromText;
+        }
+
+        if (interactionCommands == null) {
+            return null;
+        }
+
+        boolean teleportAction = interactionCommands.stream()
+                .map(value -> value == null ? "" : value.toLowerCase(Locale.ROOT))
+                .anyMatch(value -> value.contains("tpaccept")
+                        || value.contains("tpyes")
+                        || value.contains("tpadeny")
+                        || value.contains("tpdeny")
+                        || value.contains("tpno"));
+
+        if (!teleportAction) {
+            return null;
+        }
+
+        String body = clean(text);
+        return new SocialFeedEvent(
+                SocialEventKind.TELEPORT_REQUEST,
+                extractTeleportActor(body),
+                "Teleport-Anfrage",
                 body
         );
     }
@@ -572,6 +595,16 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
             List<String> aliases
     ) {
         return new ServerCommandSpec(id, label, command, description, aliases, ServerCommandMode.PREFILL);
+    }
+
+    private static String extractTeleportActor(String body) {
+        Matcher actorMatcher = TPA_ACTOR.matcher(body);
+        if (actorMatcher.find()) {
+            return actorMatcher.group(1);
+        }
+
+        Matcher reversed = TPA_ACTOR_REVERSED.matcher(body);
+        return reversed.find() ? reversed.group(1) : null;
     }
 
     private static int skipLegacyFormattingAndWhitespace(String text, int start) {
