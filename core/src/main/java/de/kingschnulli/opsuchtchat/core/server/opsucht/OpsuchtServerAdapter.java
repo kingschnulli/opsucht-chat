@@ -38,6 +38,10 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
             "(?i)(?:teleport|tpa).{0,35}(?:anfrage|anfrag).{0,50}(?:von\\s+)?([A-Za-z0-9_.~-]{1,32})"
     );
 
+    private static final Pattern FRIEND_SERVER = Pattern.compile(
+            "(?i)^([A-Za-z0-9_.~-]{1,32})\\s+spielt\\s+nun\\s+auf\\s+([A-Za-z0-9_.~-]{1,64})!?$"
+    );
+
     private static final List<ServerHubPage> HUB_PAGES = List.of(
             new ServerHubPage("quick", "Schnell", List.of(
                     run("home", "/home", "Homes öffnen", "home", List.of()),
@@ -229,13 +233,6 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
 
         return List.of(
                 new PlayerActionSpec(
-                        "friend",
-                        "+Freund",
-                        friendAddCommand(partner),
-                        PlayerActionMode.RUN,
-                        true
-                ),
-                new PlayerActionSpec(
                         "pay",
                         "Pay",
                         paymentCommand(partner, ""),
@@ -246,6 +243,20 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
                         "tpa",
                         "TPA",
                         "tpa " + partner,
+                        PlayerActionMode.RUN,
+                        true
+                ),
+                new PlayerActionSpec(
+                        "friend_add",
+                        "+Freund",
+                        friendAddCommand(partner),
+                        PlayerActionMode.RUN,
+                        false
+                ),
+                new PlayerActionSpec(
+                        "friend_remove",
+                        "Freund entfernen",
+                        "freund entfernen " + partner,
                         PlayerActionMode.RUN,
                         false
                 ),
@@ -483,6 +494,18 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
         }
 
         String lower = body.toLowerCase(Locale.ROOT);
+
+        Matcher friendServer = FRIEND_SERVER.matcher(body);
+        if (friendServer.matches()) {
+            String actor = friendServer.group(1);
+            String server = friendServer.group(2);
+            return new SocialFeedEvent(
+                    SocialEventKind.FRIEND_PRESENCE,
+                    actor,
+                    actor + " · " + server,
+                    body
+            );
+        }
 
         if ((lower.contains("freundschafts-anfrage") || lower.contains("freundschaftsanfrage"))
                 && lower.contains("angenommen")) {
