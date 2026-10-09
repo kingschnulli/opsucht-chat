@@ -9,8 +9,6 @@ import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerEventKind;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
-import de.kingschnulli.opsuchtchat.core.presentation.SocialEvent;
-import de.kingschnulli.opsuchtchat.core.presentation.SocialEventKind;
 import de.kingschnulli.opsuchtchat.core.presentation.SocialEventKind;
 import de.kingschnulli.opsuchtchat.core.presentation.SocialFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
@@ -528,40 +526,6 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
                 "Teleport-Anfrage",
                 body
         );
-    }
-
-    @Override
-    public SocialEvent parseSocialEvent(String text) {
-        String cleaned = clean(text);
-        if (cleaned.isBlank()) {
-            return null;
-        }
-
-        String body = cleaned;
-        String lower = cleaned.toLowerCase(Locale.ROOT);
-        if (lower.startsWith("opsucht")) {
-            int separator = cleaned.indexOf('»');
-            if (separator >= 0) {
-                body = cleaned.substring(separator + 1).trim();
-            }
-        }
-
-        String bodyLower = body.toLowerCase(Locale.ROOT);
-
-        if ((bodyLower.contains("teleport-anfrage") || bodyLower.contains("teleportanfrage"))
-                && (bodyLower.contains("geschickt") || bodyLower.contains("gesendet"))) {
-            String actor = extractLeadingActor(body);
-            return new SocialEvent(
-                    SocialEventKind.TELEPORT_REQUEST,
-                    actor,
-                    "Teleport-Anfrage",
-                    body
-            );
-        }
-
-        // Friend requests intentionally stay unparsed until we have real OPSUCHT
-        // examples in debug data. Do not guess server phrasing.
-        return null;
     }
 
     @Override
