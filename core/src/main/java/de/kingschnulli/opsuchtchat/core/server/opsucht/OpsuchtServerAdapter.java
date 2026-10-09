@@ -462,6 +462,19 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
             return null;
         }
 
+        String initialLower = body.toLowerCase(Locale.ROOT);
+        if (initialLower.startsWith("opsucht")) {
+            int separator = body.indexOf('»');
+            if (separator >= 0) {
+                body = body.substring(separator + 1).trim();
+            }
+        } else if (initialLower.startsWith("freunde") && initialLower.contains("opsucht")) {
+            int bracket = body.lastIndexOf(']');
+            if (bracket >= 0 && bracket + 1 < body.length()) {
+                body = body.substring(bracket + 1).trim();
+            }
+        }
+
         String lower = body.toLowerCase(Locale.ROOT);
         boolean teleportRequest = (lower.contains("teleport") || lower.contains("tpa"))
                 && (lower.contains("anfrage")
