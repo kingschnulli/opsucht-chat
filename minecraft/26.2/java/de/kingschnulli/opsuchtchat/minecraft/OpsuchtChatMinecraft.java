@@ -40,6 +40,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.function.Predicate;
+import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.screens.ChatScreen;
@@ -87,6 +88,8 @@ public final class OpsuchtChatMinecraft {
     private static final Map<String, String> observedPublicAliases = new HashMap<>();
     private static final Set<String> importantMessageKeys = new HashSet<>();
     private static final Set<String> serverCommandFavorites = new HashSet<>();
+    private static final Map<String, Long> recentActionCommands = new ConcurrentHashMap<>();
+    private static final long ACTION_DEBOUNCE_MS = 900L;
     private static int socialUnread;
 
     private OpsuchtChatMinecraft() {
@@ -406,6 +409,13 @@ public final class OpsuchtChatMinecraft {
                             : classification.privateDirection(),
                     classification.privateBody()
             ));
+        }
+
+        if (classification.category() == ChatCategory.PRIVATE
+                && classification.privateDirection() == PrivateMessageDirection.INCOMING
+                && classification.privatePartner() != null
+                && !isChatFrameActive()) {
+            showOverlay("PN · " + classification.privatePartner());
         }
     }
 
@@ -781,11 +791,23 @@ public final class OpsuchtChatMinecraft {
         }
 
         String command = action.command();
-        if (command == null || command.isBlank()) {
+        if (command == null || command.isBlank() || !allowActionCommand(command)) {
             return false;
         }
 
         minecraft.player.connection.sendCommand(command);
+
+        String partner = activePrivatePartner();
+        if (partner != null) {
+            String feedback = switch (action.id()) {
+                case "friend" -> "Freundesanfrage gesendet";
+                case "tpa" -> "TPA gesendet";
+                case "ignore" -> "Ignorieren ausgeführt";
+                case "realname" -> "Realname abgefragt";
+                default -> action.label() + " ausgeführt";
+            };
+            appendLocalPrivateFeedback(partner, feedback);
+        }
         return true;
     }
 
@@ -957,15 +979,26 @@ public final class OpsuchtChatMinecraft {
             return false;
         }
 
+        Long parsedAmount = parsePaymentAmount(value);
+        if (parsedAmount == null) {
+            showOverlay("Pay: ungültiger Betrag");
+            return true;
+        }
+        if (parsedAmount < 100L) {
+            showOverlay("Pay: Minimum 100$");
+            return true;
+        }
+
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.player == null || minecraft.player.connection == null) {
             return false;
         }
 
         String target = resolvePrivateTarget(partner);
-        String command = adapter.paymentCommand(target, value);
-        if (command == null || command.isBlank()) {
-            return false;
+        String normalized = Long.toString(parsedAmount);
+        String command = adapter.paymentCommand(target, normalized);
+        if (command == null || command.isBlank() || !allowActionCommand(command)) {
+            return true;
         }
 
         if (addToRecent && minecraft.gui != null && minecraft.gui.hud != null) {
@@ -973,6 +1006,7 @@ public final class OpsuchtChatMinecraft {
         }
 
         minecraft.player.connection.sendCommand(command);
+        appendLocalPrivateFeedback(target, formatCompactAmount(parsedAmount) + "$ gesendet");
         return true;
     }
 
@@ -992,7 +1026,11 @@ public final class OpsuchtChatMinecraft {
             return false;
         }
 
+        if (!allowActionCommand(command)) {
+            return true;
+        }
         minecraft.player.connection.sendCommand(command);
+        appendLocalPrivateFeedback(target, "Freundesanfrage gesendet");
         return true;
     }
 
@@ -1022,6 +1060,73 @@ public final class OpsuchtChatMinecraft {
 
         minecraft.player.connection.sendCommand(adapter.privateMessageCommand(partner, message));
         return true;
+    }
+
+    private static void appendLocalPrivateFeedback(String partner, String body) {
+        if (engine == null || partner == null || partner.isBlank() || body == null || body.isBlank()) {
+            return;
+        }
+
+        PrivateMessageEntry entry = new PrivateMessageEntry(
+                Instant.now(),
+                resolvePrivateTarget(partner),
+                PrivateMessageDirection.OUTGOING,
+                body
+        );
+        engine.restorePrivateMessage(entry);
+        if (socialStore != null) {
+            socialStore.appendPrivateMessage(entry);
+        }
+        refreshChatView();
+    }
+
+    private static boolean allowActionCommand(String command) {
+        long now = System.currentTimeMillis();
+        Long previous = recentActionCommands.put(command.toLowerCase(Locale.ROOT), now);
+        if (previous != null && now - previous < ACTION_DEBOUNCE_MS) {
+            showOverlay("Aktion bereits gesendet");
+            return false;
+        }
+        return true;
+    }
+
+    private static Long parsePaymentAmount(String input) {
+        String value = input.trim().toLowerCase(Locale.ROOT)
+                .replace(".", "")
+                .replace(",", "")
+                .replace("$", "")
+                .replace(" ", "");
+        if (value.isEmpty()) {
+            return null;
+        }
+
+        long multiplier = 1L;
+        if (value.endsWith("k")) {
+            multiplier = 1_000L;
+            value = value.substring(0, value.length() - 1);
+        } else if (value.endsWith("m")) {
+            multiplier = 1_000_000L;
+            value = value.substring(0, value.length() - 1);
+        }
+
+        try {
+            if (value.isEmpty() || value.contains("-")) {
+                return null;
+            }
+            return Math.multiplyExact(Long.parseLong(value), multiplier);
+        } catch (NumberFormatException | ArithmeticException ignored) {
+            return null;
+        }
+    }
+
+    private static String formatCompactAmount(long amount) {
+        if (amount >= 1_000_000L && amount % 1_000_000L == 0) {
+            return (amount / 1_000_000L) + "m";
+        }
+        if (amount >= 1_000L && amount % 1_000L == 0) {
+            return (amount / 1_000L) + "k";
+        }
+        return String.format(Locale.ROOT, "%,d", amount).replace(',', '.');
     }
 
     public static boolean handleLocalCommand(String input) {
