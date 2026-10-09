@@ -325,7 +325,10 @@ public final class OpsuchtChatMinecraft {
             AUCTION_TRACKER.accept(auctionEvent);
         }
 
-        SocialFeedEvent socialEvent = adapter.parseSocialEvent(message.content().getString());
+        SocialFeedEvent socialEvent = adapter.parseSocialEvent(
+                message.content().getString(),
+                clickCommandValues(message.content())
+        );
         if (socialEvent != null) {
             socialUnread++;
         }
@@ -381,7 +384,11 @@ public final class OpsuchtChatMinecraft {
 
         // Actionable social events (TPA, later friend requests, etc.) must never
         // disappear from the closed HUD just because another feed is selected.
-        if (!isChatFrameActive() && adapter.parseSocialEvent(message.content().getString()) != null) {
+        if (!isChatFrameActive()
+                && adapter.parseSocialEvent(
+                        message.content().getString(),
+                        clickCommandValues(message.content())
+                ) != null) {
             return true;
         }
 
@@ -1196,6 +1203,23 @@ public final class OpsuchtChatMinecraft {
 
     private static String serverIdentityBase(String value) {
         return adapter == null ? (value == null ? "" : value.trim().toLowerCase(Locale.ROOT)) : adapter.identityBase(value);
+    }
+
+    private static List<String> clickCommandValues(Component component) {
+        if (component == null) {
+            return List.of();
+        }
+
+        List<String> result = new ArrayList<>();
+        for (Component part : component.toFlatList()) {
+            ClickEvent click = part.getStyle().getClickEvent();
+            if (click instanceof ClickEvent.RunCommand run) {
+                result.add(run.command());
+            } else if (click instanceof ClickEvent.SuggestCommand suggest) {
+                result.add(suggest.command());
+            }
+        }
+        return List.copyOf(result);
     }
 
     private static Component sliceComponent(Component source, int start, int end) {
