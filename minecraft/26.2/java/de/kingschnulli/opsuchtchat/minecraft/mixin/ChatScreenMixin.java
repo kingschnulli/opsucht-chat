@@ -2175,6 +2175,11 @@ public abstract class ChatScreenMixin extends Screen {
             int avatarY = getY() + 5;
             opsuchtChat$renderFaceStatic(graphics, conversation.name(), avatarX, avatarY, 15);
 
+            boolean online = OpsuchtChatMinecraft.playerInfo(conversation.name()) != null;
+            int presence = online ? GREEN : 0xFF65717C;
+            graphics.fill(avatarX + 11, avatarY + 11, avatarX + 15, avatarY + 15, PANEL_BG_ALT);
+            graphics.fill(avatarX + 12, avatarY + 12, avatarX + 15, avatarY + 15, presence);
+
             int textX = getX() + 23;
             int available = Math.max(18, getWidth() - 25);
             String name = clamp(font, conversation.name(), available);
