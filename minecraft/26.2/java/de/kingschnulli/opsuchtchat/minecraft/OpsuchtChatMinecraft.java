@@ -14,6 +14,7 @@ import de.kingschnulli.opsuchtchat.core.presentation.AuctionSessionSnapshot;
 import de.kingschnulli.opsuchtchat.core.presentation.AuctionSessionTracker;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.SocialEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.SocialFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
 import de.kingschnulli.opsuchtchat.core.server.ChatServerAdapter;
@@ -72,7 +73,11 @@ public final class OpsuchtChatMinecraft {
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final List<ChatViewMessage> FEED =
             Collections.synchronizedList(new ArrayList<>());
+    private static final List<SocialViewEvent> SOCIAL_EVENTS =
+            Collections.synchronizedList(new ArrayList<>());
+    private static final Set<Long> RESOLVED_SOCIAL_EVENTS = new HashSet<>();
     private static final AuctionSessionTracker AUCTION_TRACKER = new AuctionSessionTracker();
+    private static long nextSocialEventId = 1L;
 
     private static ChatEngine engine;
     private static ChatServerAdapter adapter;
@@ -510,6 +515,33 @@ public final class OpsuchtChatMinecraft {
         return engine == null ? List.of() : engine.recentPrivateConversations();
     }
 
+    public static List<SocialViewEvent> pendingSocialEvents() {
+        synchronized (SOCIAL_EVENTS) {
+            return SOCIAL_EVENTS.stream()
+                    .filter(event -> !RESOLVED_SOCIAL_EVENTS.contains(event.id()))
+                    .toList();
+        }
+    }
+
+    public static List<SocialViewEvent> pendingSocialEvents(String partner) {
+        if (partner == null || partner.isBlank()) {
+            return pendingSocialEvents();
+        }
+
+        String target = resolvePrivateTarget(partner);
+        synchronized (SOCIAL_EVENTS) {
+            return SOCIAL_EVENTS.stream()
+                    .filter(event -> !RESOLVED_SOCIAL_EVENTS.contains(event.id()))
+                    .filter(event -> event.event().actor() != null)
+                    .filter(event -> resolvePrivateTarget(event.event().actor()).equalsIgnoreCase(target))
+                    .toList();
+        }
+    }
+
+    public static void resolveSocialEvent(long id) {
+        RESOLVED_SOCIAL_EVENTS.add(id);
+    }
+
     public static List<PrivateMessageEntry> privateMessages(String partner) {
         return engine == null || partner == null ? List.of() : engine.privateMessages(partner);
     }
@@ -867,6 +899,8 @@ public final class OpsuchtChatMinecraft {
     public static void onChatCleared() {
         CLASSIFICATIONS.clear();
         FEED.clear();
+        SOCIAL_EVENTS.clear();
+        RESOLVED_SOCIAL_EVENTS.clear();
         AUCTION_TRACKER.reset();
         socialUnread = 0;
         if (engine != null) {
