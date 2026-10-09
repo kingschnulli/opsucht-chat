@@ -1325,6 +1325,7 @@ public abstract class ChatScreenMixin extends Screen {
                             opsuchtChat$serverCommandScroll = 0;
                         }
                         OpsuchtChatMinecraft.select(category);
+                        this.setInitialFocus(this.input);
                         if (category == ChatCategory.PRIVATE && OpsuchtChatMinecraft.socialUnread() > 0) {
                             opsuchtChat$socialInboxSelected = true;
                             OpsuchtChatMinecraft.markSocialInboxRead();
