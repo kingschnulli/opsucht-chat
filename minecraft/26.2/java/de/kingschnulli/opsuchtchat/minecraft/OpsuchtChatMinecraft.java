@@ -137,17 +137,26 @@ public final class OpsuchtChatMinecraft {
     public static int frameWidth() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null) {
-            boolean workspace = activeCategory() == ChatCategory.PRIVATE || activeCategory() == ChatCategory.SERVER;
-            return workspace ? SOCIAL_FRAME_MAX_WIDTH : FEED_FRAME_MAX_WIDTH;
+            return FEED_FRAME_MAX_WIDTH;
         }
 
         int screenWidth = minecraft.getWindow().getGuiScaledWidth();
+        double chatScale = Math.max(0.1, minecraft.options.chatScale().get());
+        int vanillaWidth = (int)Math.ceil(ChatComponent.getWidth(minecraft.options.chatWidth().get()) * chatScale) + 12;
+
+        // Keep the custom frame aligned with Minecraft's own chat-width option.
+        // Workspaces may use a little more room for sidebars, but never become
+        // narrower than the configured vanilla chat.
         boolean workspace = activeCategory() == ChatCategory.PRIVATE || activeCategory() == ChatCategory.SERVER;
-        int preferred = (int)Math.round(screenWidth * (workspace ? 0.58 : 0.36));
-        int min = workspace ? SOCIAL_FRAME_MIN_WIDTH : FEED_FRAME_MIN_WIDTH;
-        int max = workspace ? SOCIAL_FRAME_MAX_WIDTH : FEED_FRAME_MAX_WIDTH;
-        preferred = Math.max(min, Math.min(max, preferred));
+        int preferred = workspace
+                ? Math.max(vanillaWidth, Math.min(SOCIAL_FRAME_MAX_WIDTH, vanillaWidth + serverOrPrivateExtraWidth()))
+                : vanillaWidth;
+
         return Math.max(170, Math.min(screenWidth - FRAME_X * 2, preferred));
+    }
+
+    private static int serverOrPrivateExtraWidth() {
+        return activeCategory() == ChatCategory.PRIVATE ? SIDEBAR_MIN_WIDTH : 92;
     }
 
     public static int messageBottom() {
@@ -607,11 +616,24 @@ public final class OpsuchtChatMinecraft {
                     .toList();
         }
 
-        return adapter.serverHubPages().stream()
+        List<ServerCommandSpec> pageCommands = adapter.serverHubPages().stream()
                 .filter(page -> page.id().equals(normalizedPage))
                 .findFirst()
                 .map(ServerHubPage::commands)
                 .orElse(List.of());
+
+        if (!"quick".equals(normalizedPage)) {
+            return pageCommands;
+        }
+
+        Map<String, ServerCommandSpec> quick = new java.util.LinkedHashMap<>();
+        for (ServerCommandSpec favorite : favoriteServerCommands()) {
+            quick.putIfAbsent(favorite.id(), favorite);
+        }
+        for (ServerCommandSpec command : pageCommands) {
+            quick.putIfAbsent(command.id(), command);
+        }
+        return List.copyOf(quick.values());
     }
 
     public static List<ServerCommandSpec> favoriteServerCommands() {
