@@ -5,6 +5,7 @@ import de.kingschnulli.opsuchtchat.core.Classification;
 import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.SocialEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.SocialFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
 import java.util.List;
@@ -85,6 +86,10 @@ public interface ChatServerAdapter {
     }
 
     default ServerFeedEvent parseServerEvent(String text) {
+        return null;
+    }
+
+    default SocialEvent parseSocialEvent(String text) {
         return null;
     }
 
