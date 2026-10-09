@@ -87,6 +87,25 @@ class OpsuchtChatEngineTest {
     }
 
     @Test
+    void socialRequestCreatesUnreadConversationPreview() {
+        OpsuchtChatEngine engine = new OpsuchtChatEngine();
+
+        engine.touchSocialConversation(
+                "SkyDecaxy",
+                "Teleport-Anfrage",
+                now
+        );
+
+        assertEquals(1, engine.unread(ChatCategory.PRIVATE));
+        PrivateConversation conversation = engine.recentPrivateConversations().get(0);
+        assertEquals("SkyDecaxy", conversation.name());
+        assertEquals("Teleport-Anfrage", conversation.preview());
+
+        engine.selectPrivatePartner("SkyDecaxy");
+        assertEquals(0, engine.unread(ChatCategory.PRIVATE));
+    }
+
+    @Test
     void pinSurvivesTransientResetAndCloseRemovesIt() {
         OpsuchtChatEngine engine = new OpsuchtChatEngine();
         engine.selectPrivatePartner("Ruffy333");
