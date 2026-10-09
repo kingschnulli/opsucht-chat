@@ -77,6 +77,35 @@ public class ChatEngine {
         }
     }
 
+    public synchronized void touchSocialConversation(
+            String partner,
+            String preview,
+            Instant receivedAt
+    ) {
+        if (partner == null || partner.isBlank()) {
+            return;
+        }
+
+        String key = conversationKey(partner);
+        ConversationState state = privateConversations.get(key);
+        if (state == null) {
+            state = new ConversationState(partner.trim());
+            privateConversations.put(key, state);
+        } else {
+            state.displayName = partner.trim();
+        }
+
+        state.preview = preview == null ? "" : preview.trim();
+        state.lastMessageAt = receivedAt == null ? Instant.now() : receivedAt;
+
+        boolean readingThisPartner = activeCategory == ChatCategory.PRIVATE && key.equals(activePrivateKey);
+        if (!readingThisPartner) {
+            state.unread++;
+        }
+
+        trimPrivateConversations();
+    }
+
     public synchronized void selectPrivatePartner(String partner) {
         if (partner == null || partner.isBlank()) {
             select(ChatCategory.PRIVATE);
