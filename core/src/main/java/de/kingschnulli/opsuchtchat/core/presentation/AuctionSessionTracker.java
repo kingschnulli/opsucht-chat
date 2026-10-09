@@ -54,6 +54,13 @@ public final class AuctionSessionTracker {
                 phase = AuctionEventKind.SOLD;
                 active = false;
             }
+            case CANCELLED -> {
+                if (item == null && event.item() != null) {
+                    item = event.item();
+                }
+                phase = AuctionEventKind.CANCELLED;
+                active = false;
+            }
             case OTHER -> {
                 if (active && event.amount() != null) {
                     currentAmount = event.amount();
