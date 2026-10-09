@@ -43,6 +43,7 @@ import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.chat.GuiMessage;
@@ -54,6 +55,7 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.world.entity.player.PlayerSkin;
 import net.minecraft.world.item.component.ResolvableProfile;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 
 public final class OpsuchtChatMinecraft {
     private static final String OPEN_PRIVATE_PREFIX = "/opschat pn ";
@@ -80,6 +82,7 @@ public final class OpsuchtChatMinecraft {
     private static String activeServerAddress;
     private static DebugCapture debugCapture;
     private static InteractionDebugCapture interactionDebugCapture;
+    private static ContainerDebugCapture containerDebugCapture;
     private static Map<String, String> aliasCache = Map.of();
     private static final Map<String, String> observedPublicAliases = new HashMap<>();
     private static final Set<String> importantMessageKeys = new HashSet<>();
@@ -298,6 +301,23 @@ public final class OpsuchtChatMinecraft {
         }
 
         return false;
+    }
+
+    public static void observeContainer(AbstractContainerMenu menu) {
+        ensureServerState();
+        if (menu == null || !isActive() || !debugCapture().enabled()) {
+            return;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || !(minecraft.gui.screen() instanceof AbstractContainerScreen<?> screen)) {
+            return;
+        }
+        if (screen.getMenu() != menu) {
+            return;
+        }
+
+        containerDebugCapture().append(screen.getTitle(), menu);
     }
 
     public static void observe(GuiMessage message) {
@@ -1003,7 +1023,7 @@ public final class OpsuchtChatMinecraft {
             boolean enabled = debugCapture().toggle();
             String file = debugCapture().outputFile().toAbsolutePath().toString();
             showOverlay(enabled
-                    ? "Opsucht Chat Debug AN: " + file + " + debug-interactions.jsonl"
+                    ? "Opsucht Chat Debug AN: " + file + " + debug-interactions.jsonl + debug-containers.jsonl"
                     : "Opsucht Chat Debug AUS");
             return true;
         }
@@ -1081,6 +1101,15 @@ public final class OpsuchtChatMinecraft {
             );
         }
         return interactionDebugCapture;
+    }
+
+    private static ContainerDebugCapture containerDebugCapture() {
+        if (containerDebugCapture == null) {
+            containerDebugCapture = new ContainerDebugCapture(
+                    rootDataDir().resolve("debug-containers.jsonl")
+            );
+        }
+        return containerDebugCapture;
     }
 
     private static Path rootDataDir() {
