@@ -93,6 +93,21 @@ class OpsuchtPresentationTest {
     }
 
     @Test
+    void parsesFriendServerPresenceAsSocialEvent() {
+        var presence = adapter.parseSocialEvent(
+                "FREUNDE » Kater_kurumi spielt nun auf farm-11!"
+        );
+
+        assertNotNull(presence);
+        assertEquals(
+                de.kingschnulli.opsuchtchat.core.presentation.SocialEventKind.FRIEND_PRESENCE,
+                presence.kind()
+        );
+        assertEquals("Kater_kurumi", presence.actor());
+        assertEquals("Kater_kurumi · farm-11", presence.title());
+    }
+
+    @Test
     void labelsInteractiveServerActions() {
         assertEquals(
                 "Annehmen",
@@ -173,11 +188,13 @@ class OpsuchtPresentationTest {
         var actions = adapter.playerActions("SkyDecaxy");
 
         assertEquals(
-                List.of("friend", "pay", "tpa", "ignore", "realname"),
+                List.of("pay", "tpa", "friend_add", "friend_remove", "ignore", "realname"),
                 actions.stream().map(action -> action.id()).toList()
         );
-        assertEquals(PlayerActionMode.PAY_AMOUNT, actions.get(1).mode());
-        assertEquals("tpa SkyDecaxy", actions.get(2).command());
+        assertEquals(PlayerActionMode.PAY_AMOUNT, actions.get(0).mode());
+        assertEquals("tpa SkyDecaxy", actions.get(1).command());
+        assertEquals(true, actions.get(1).primary());
+        assertEquals("freund entfernen SkyDecaxy", actions.get(3).command());
     }
 
     @Test
