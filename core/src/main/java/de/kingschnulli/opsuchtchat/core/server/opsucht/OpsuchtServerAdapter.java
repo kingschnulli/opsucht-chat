@@ -86,6 +86,7 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
                     run("ah", "/ah", "Auktionshaus", "auktionshaus", List.of("ah")),
                     run("bank", "/bank", "Bank", "bank", List.of()),
                     run("jobs", "/jobs", "Jobs", "jobs", List.of("job")),
+                    run("fischerei", "/fischerei", "Fischerei", "fischerei", List.of("fishing", "angeln")),
                     run("immo", "/immo", "Immobilienmarkt", "immo", List.of("im")),
                     run("markt", "/markt", "Marktplatz", "markt", List.of("marktplatz")),
                     prefill("werbung", "/werbung", "Werbung senden", "werbung", List.of()),
@@ -542,6 +543,12 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
 
         if (lower.contains("verkauft")) {
             kind = AuctionEventKind.SOLD;
+        } else if (lower.contains("abbruch")
+                || lower.contains("abgebrochen")
+                || lower.contains("zurückgezogen")
+                || lower.contains("zurueckgezogen")
+                || lower.contains("keine gebote")) {
+            kind = AuctionEventKind.CANCELLED;
         } else if (lower.matches(".*\\bzum\\s+(?:ersten|zweiten|dritten|2\\.|3\\.).*")) {
             kind = AuctionEventKind.COUNTDOWN;
         } else if (lower.contains("versteiger")) {
