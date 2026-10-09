@@ -132,6 +132,8 @@ public abstract class ChatScreenMixin extends Screen {
     @Unique
     private boolean opsuchtChat$socialInboxSelected;
     @Unique
+    private boolean opsuchtChat$keyboardNavigationMode;
+    @Unique
     private final List<FrameButton> opsuchtChat$playerPrimaryActionButtons = new ArrayList<>();
     @Unique
     private final List<FrameButton> opsuchtChat$playerOverflowActionButtons = new ArrayList<>();
@@ -177,6 +179,7 @@ public abstract class ChatScreenMixin extends Screen {
         opsuchtChat$addSocialInboxButton();
         opsuchtChat$addPrivateHeaderActions();
         opsuchtChat$addServerWorkspaceWidgets();
+        opsuchtChat$keyboardNavigationMode = false;
         this.setInitialFocus(this.input);
     }
 
@@ -304,6 +307,12 @@ public abstract class ChatScreenMixin extends Screen {
             return;
         }
 
+        // Tab is the explicit opt-in for navigating UI widgets with the keyboard.
+        if (event.key() == 258) {
+            opsuchtChat$keyboardNavigationMode = true;
+            return;
+        }
+
         // The search box owns up/down while focused; use them to move through
         // result rows instead of letting Screen focus-navigation jump to tabs.
         if (this.getFocused() == opsuchtChat$serverSearchInput
@@ -311,6 +320,12 @@ public abstract class ChatScreenMixin extends Screen {
             int direction = event.key() == 264 ? 1 : -1;
             opsuchtChat$serverCommandScroll = Math.max(0, opsuchtChat$serverCommandScroll + direction);
             cir.setReturnValue(true);
+            return;
+        }
+
+        // Any ordinary editing key while the composer is focused exits widget-nav mode.
+        if (this.getFocused() == this.input && event.key() != 264 && event.key() != 265) {
+            opsuchtChat$keyboardNavigationMode = false;
         }
     }
 
@@ -322,22 +337,24 @@ public abstract class ChatScreenMixin extends Screen {
             )
     )
     private boolean opsuchtChat$keepArrowHistoryInChatInput(Screen screen, KeyEvent event) {
-        // ChatScreen asks Screen first. Screen treats ↑/↓ as focus navigation.
-        // When the chat input is focused, return false here so ChatScreen itself
-        // receives ↑/↓ and performs the normal message-history behavior.
+        boolean arrow = event.key() == 264 || event.key() == 265;
+
+        // Up/down belong to chat history by default. They may navigate widgets only
+        // after the user explicitly entered keyboard-navigation mode with Tab.
         if (OpsuchtChatMinecraft.isChatFrameActive()
-                && this.getFocused() == this.input
-                && (event.key() == 264 || event.key() == 265)) {
+                && arrow
+                && (!opsuchtChat$keyboardNavigationMode || this.getFocused() == this.input)) {
+            this.setInitialFocus(this.input);
             return false;
         }
+
         return super.keyPressed(event);
     }
 
     @Inject(method = "removed", at = @At("HEAD"))
     private void opsuchtChat$resetFocusOnClose(CallbackInfo ci) {
-        if (this.input != null) {
-            this.setInitialFocus(this.input);
-        }
+        opsuchtChat$keyboardNavigationMode = false;
+        this.setFocused(null);
         opsuchtChat$playerActionsOpen = false;
         opsuchtChat$payMode = false;
         opsuchtChat$socialInboxSelected = false;
@@ -422,6 +439,8 @@ public abstract class ChatScreenMixin extends Screen {
         if (!OpsuchtChatMinecraft.isChatFrameActive()) {
             return;
         }
+
+        opsuchtChat$keyboardNavigationMode = false;
 
         int mouseX = (int)event.x();
         int mouseY = (int)event.y();
