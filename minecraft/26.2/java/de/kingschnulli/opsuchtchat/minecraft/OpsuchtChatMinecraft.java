@@ -14,6 +14,7 @@ import de.kingschnulli.opsuchtchat.core.presentation.AuctionSessionSnapshot;
 import de.kingschnulli.opsuchtchat.core.presentation.AuctionSessionTracker;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.SocialFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
 import de.kingschnulli.opsuchtchat.core.server.ChatServerAdapter;
 import de.kingschnulli.opsuchtchat.core.server.PlayerActionMode;
@@ -83,6 +84,7 @@ public final class OpsuchtChatMinecraft {
     private static final Map<String, String> observedPublicAliases = new HashMap<>();
     private static final Set<String> importantMessageKeys = new HashSet<>();
     private static final Set<String> serverCommandFavorites = new HashSet<>();
+    private static int socialUnread;
 
     private OpsuchtChatMinecraft() {
     }
@@ -323,13 +325,19 @@ public final class OpsuchtChatMinecraft {
             AUCTION_TRACKER.accept(auctionEvent);
         }
 
+        SocialFeedEvent socialEvent = adapter.parseSocialEvent(message.content().getString());
+        if (socialEvent != null) {
+            socialUnread++;
+        }
+
         FEED.add(new ChatViewMessage(
                 envelope.receivedAt(),
                 message,
                 classification,
                 publicChat,
                 serverEvent,
-                auctionEvent
+                auctionEvent,
+                socialEvent
         ));
         trimFeed();
 
@@ -368,6 +376,12 @@ public final class OpsuchtChatMinecraft {
 
         ChatCategory active = engine.activeCategory();
         if (active == ChatCategory.ALL) {
+            return true;
+        }
+
+        // Actionable social events (TPA, later friend requests, etc.) must never
+        // disappear from the closed HUD just because another feed is selected.
+        if (!isChatFrameActive() && adapter.parseSocialEvent(message.content().getString()) != null) {
             return true;
         }
 
@@ -462,7 +476,27 @@ public final class OpsuchtChatMinecraft {
     }
 
     public static int unread(ChatCategory category) {
-        return engine == null ? 0 : engine.unread(category);
+        if (engine == null) {
+            return 0;
+        }
+        int value = engine.unread(category);
+        return category == ChatCategory.PRIVATE ? value + socialUnread : value;
+    }
+
+    public static int socialUnread() {
+        return socialUnread;
+    }
+
+    public static List<ChatViewMessage> socialInboxEvents() {
+        synchronized (FEED) {
+            return FEED.stream()
+                    .filter(entry -> entry.socialEvent() != null)
+                    .toList();
+        }
+    }
+
+    public static void markSocialInboxRead() {
+        socialUnread = 0;
     }
 
     public static List<PrivateConversation> recentPrivateConversations() {
@@ -827,6 +861,7 @@ public final class OpsuchtChatMinecraft {
         CLASSIFICATIONS.clear();
         FEED.clear();
         AUCTION_TRACKER.reset();
+        socialUnread = 0;
         if (engine != null) {
             engine.resetTransientState();
         }
@@ -1038,6 +1073,7 @@ public final class OpsuchtChatMinecraft {
         CLASSIFICATIONS.clear();
         FEED.clear();
         AUCTION_TRACKER.reset();
+        socialUnread = 0;
 
         adapter = ServerAdapterRegistry.resolve(address);
         engine = adapter == null ? null : new ChatEngine(adapter);
