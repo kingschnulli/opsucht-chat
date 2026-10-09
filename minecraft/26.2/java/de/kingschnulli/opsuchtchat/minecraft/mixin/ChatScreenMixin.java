@@ -180,7 +180,7 @@ public abstract class ChatScreenMixin extends Screen {
         opsuchtChat$addPrivateHeaderActions();
         opsuchtChat$addServerWorkspaceWidgets();
         opsuchtChat$keyboardNavigationMode = false;
-        this.setInitialFocus(this.input);
+        opsuchtChat$focusComposer();
     }
 
     @Inject(method = "extractRenderState", at = @At("HEAD"))
@@ -344,11 +344,24 @@ public abstract class ChatScreenMixin extends Screen {
         if (OpsuchtChatMinecraft.isChatFrameActive()
                 && arrow
                 && (!opsuchtChat$keyboardNavigationMode || this.getFocused() == this.input)) {
-            this.setInitialFocus(this.input);
+            opsuchtChat$focusComposer();
             return false;
         }
 
         return super.keyPressed(event);
+    }
+
+    @Unique
+    private void opsuchtChat$focusComposer() {
+        if (this.input == null) {
+            return;
+        }
+
+        // setInitialFocus only controls the initial widget selected by Screen.
+        // Runtime transitions (tab click, arrow-history recovery, reopening chat)
+        // need the actual focused listener to be the composer as well.
+        this.setInitialFocus(this.input);
+        this.setFocused(this.input);
     }
 
     @Inject(method = "removed", at = @At("HEAD"))
@@ -473,10 +486,10 @@ public abstract class ChatScreenMixin extends Screen {
                 if (hitbox.command().mode() == ServerCommandMode.PREFILL) {
                     this.input.setValue(OpsuchtChatMinecraft.prefillServerCommand(hitbox.command()));
                     this.input.moveCursorToEnd(false);
-                    this.setInitialFocus(this.input);
+                    opsuchtChat$focusComposer();
                 } else {
                     OpsuchtChatMinecraft.executeServerCommand(hitbox.command());
-                    this.setInitialFocus(this.input);
+                    opsuchtChat$focusComposer();
                 }
 
                 cir.setReturnValue(true);
@@ -502,7 +515,7 @@ public abstract class ChatScreenMixin extends Screen {
                     opsuchtChat$importantOnly = false;
                     opsuchtChat$feedScroll = 0;
                     OpsuchtChatMinecraft.selectPrivatePartner(hitbox.value());
-                    this.setInitialFocus(this.input);
+                    opsuchtChat$focusComposer();
                     cir.setReturnValue(true);
                     return;
                 }
@@ -510,7 +523,7 @@ public abstract class ChatScreenMixin extends Screen {
                 if (hitbox.action() == FeedAction.COMMAND) {
                     this.input.setValue(hitbox.value());
                     this.input.moveCursorToEnd(false);
-                    this.setInitialFocus(this.input);
+                    opsuchtChat$focusComposer();
                     cir.setReturnValue(true);
                     return;
                 }
@@ -520,7 +533,7 @@ public abstract class ChatScreenMixin extends Screen {
             if (clicked != null) {
                 if (this.minecraft.hasShiftDown() && clicked.getInsertion() != null) {
                     this.input.insertText(clicked.getInsertion());
-                    this.setInitialFocus(this.input);
+                    opsuchtChat$focusComposer();
                     cir.setReturnValue(true);
                     return;
                 }
@@ -589,7 +602,7 @@ public abstract class ChatScreenMixin extends Screen {
         if (OpsuchtChatMinecraft.handlePlayerNameClick(clicked)) {
             opsuchtChat$importantOnly = false;
             opsuchtChat$feedScroll = 0;
-            this.setInitialFocus(this.input);
+            opsuchtChat$focusComposer();
             cir.setReturnValue(true);
         }
     }
@@ -1442,7 +1455,7 @@ public abstract class ChatScreenMixin extends Screen {
                             opsuchtChat$serverCommandScroll = 0;
                         }
                         OpsuchtChatMinecraft.select(category);
-                        this.setInitialFocus(this.input);
+                        opsuchtChat$focusComposer();
                         if (category == ChatCategory.PRIVATE && OpsuchtChatMinecraft.socialUnread() > 0) {
                             opsuchtChat$socialInboxSelected = true;
                             OpsuchtChatMinecraft.markSocialInboxRead();
@@ -1540,7 +1553,7 @@ public abstract class ChatScreenMixin extends Screen {
                     if (opsuchtChat$serverSearchInput != null) {
                         opsuchtChat$serverSearchInput.setValue("");
                     }
-                    this.setInitialFocus(this.input);
+                    opsuchtChat$focusComposer();
                 },
                 () -> id.equals(opsuchtChat$serverPageId)
         );
@@ -1579,7 +1592,7 @@ public abstract class ChatScreenMixin extends Screen {
                         searchY
                 );
             } else if (this.getFocused() == opsuchtChat$serverSearchInput) {
-                this.setInitialFocus(this.input);
+                opsuchtChat$focusComposer();
             }
         }
     }
@@ -1737,7 +1750,7 @@ public abstract class ChatScreenMixin extends Screen {
                 0, 0, 20, 14, Component.literal("..."),
                 ignored -> {
                     opsuchtChat$playerActionsOpen = !opsuchtChat$playerActionsOpen;
-                    this.setInitialFocus(this.input);
+                    opsuchtChat$focusComposer();
                 },
                 () -> opsuchtChat$playerActionsOpen
         );
@@ -1846,19 +1859,19 @@ public abstract class ChatScreenMixin extends Screen {
             case PAY_AMOUNT -> {
                 opsuchtChat$payMode = true;
                 this.input.setValue("");
-                this.setInitialFocus(this.input);
+                opsuchtChat$focusComposer();
                 opsuchtChat$positionInput();
             }
             case PREFILL -> {
                 opsuchtChat$payMode = false;
                 this.input.setValue(OpsuchtChatMinecraft.prefillPlayerAction(action));
                 this.input.moveCursorToEnd(false);
-                this.setInitialFocus(this.input);
+                opsuchtChat$focusComposer();
             }
             case RUN -> {
                 opsuchtChat$payMode = false;
                 OpsuchtChatMinecraft.executePlayerAction(action);
-                this.setInitialFocus(this.input);
+                opsuchtChat$focusComposer();
             }
         }
     }
@@ -1932,7 +1945,7 @@ public abstract class ChatScreenMixin extends Screen {
                     opsuchtChat$playerActionsOpen = false;
                     opsuchtChat$feedScroll = 0;
                     OpsuchtChatMinecraft.markSocialInboxRead();
-                    this.setInitialFocus(this.input);
+                    opsuchtChat$focusComposer();
                 },
                 () -> opsuchtChat$socialInboxSelected
         );
