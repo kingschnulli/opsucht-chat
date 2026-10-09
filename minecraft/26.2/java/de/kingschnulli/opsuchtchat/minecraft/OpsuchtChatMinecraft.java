@@ -88,6 +88,8 @@ public final class OpsuchtChatMinecraft {
     private static final Map<String, String> observedPublicAliases = new HashMap<>();
     private static final Set<String> importantMessageKeys = new HashSet<>();
     private static final Set<String> serverCommandFavorites = new HashSet<>();
+    private static final Set<String> knownFriends = new HashSet<>();
+    private static final Map<String, String> friendWorlds = new HashMap<>();
     private static final Map<String, Long> recentActionCommands = new ConcurrentHashMap<>();
     private static final long ACTION_DEBOUNCE_MS = 900L;
     private static int socialUnread;
@@ -364,11 +366,30 @@ public final class OpsuchtChatMinecraft {
         if (socialEvent != null) {
             String actor = socialEvent.actor();
             if (actor != null && !actor.isBlank()) {
+                String target = resolvePrivateTarget(actor);
                 engine.touchSocialConversation(
-                        resolvePrivateTarget(actor),
+                        target,
                         socialEvent.title(),
                         envelope.receivedAt()
                 );
+
+                if (socialEvent.kind() == de.kingschnulli.opsuchtchat.core.presentation.SocialEventKind.FRIEND_ACCEPTED) {
+                    rememberKnownFriend(target);
+                } else if (socialEvent.kind() == de.kingschnulli.opsuchtchat.core.presentation.SocialEventKind.FRIEND_PRESENCE) {
+                    rememberKnownFriend(target);
+                    String body = socialEvent.body();
+                    String marker = " spielt nun auf ";
+                    int at = body == null ? -1 : body.toLowerCase(Locale.ROOT).indexOf(marker);
+                    if (at >= 0) {
+                        String world = body.substring(at + marker.length()).trim();
+                        while (world.endsWith("!") || world.endsWith(".")) {
+                            world = world.substring(0, world.length() - 1).trim();
+                        }
+                        if (!world.isBlank()) {
+                            friendWorlds.put(serverIdentityBase(target), world);
+                        }
+                    }
+                }
             } else {
                 socialUnread++;
             }
@@ -767,7 +788,7 @@ public final class OpsuchtChatMinecraft {
                 displayedName,
                 canonical,
                 uuid,
-                info != null,
+                info != null || isFriendKnownOnline(canonical),
                 aliases
         );
     }
@@ -777,7 +798,12 @@ public final class OpsuchtChatMinecraft {
         if (adapter == null || displayedName == null || displayedName.isBlank()) {
             return List.of();
         }
-        return adapter.playerActions(resolvePrivateTarget(displayedName));
+
+        String target = resolvePrivateTarget(displayedName);
+        boolean friend = isKnownFriend(target);
+        return adapter.playerActions(target).stream()
+                .filter(action -> !action.id().equals(friend ? "friend_add" : "friend_remove"))
+                .toList();
     }
 
     public static boolean executePlayerAction(PlayerActionSpec action) {
@@ -800,12 +826,16 @@ public final class OpsuchtChatMinecraft {
         String partner = activePrivatePartner();
         if (partner != null) {
             String feedback = switch (action.id()) {
-                case "friend" -> "Freundesanfrage gesendet";
+                case "friend_add" -> "Freundesanfrage gesendet";
+                case "friend_remove" -> "Freund entfernt";
                 case "tpa" -> "TPA gesendet";
                 case "ignore" -> "Ignorieren ausgeführt";
                 case "realname" -> "Realname abgefragt";
                 default -> action.label() + " ausgeführt";
             };
+            if (action.id().equals("friend_remove")) {
+                forgetKnownFriend(partner);
+            }
             appendLocalPrivateFeedback(partner, feedback);
         }
         return true;
@@ -897,6 +927,46 @@ public final class OpsuchtChatMinecraft {
             }
         }
         return match;
+    }
+
+    public static boolean isPlayerOnline(String playerName) {
+        return playerInfo(playerName) != null || isFriendKnownOnline(playerName);
+    }
+
+    private static boolean isFriendKnownOnline(String playerName) {
+        if (playerName == null || playerName.isBlank()) {
+            return false;
+        }
+        return friendWorlds.containsKey(serverIdentityBase(resolvePrivateTarget(playerName)));
+    }
+
+    private static boolean isKnownFriend(String playerName) {
+        if (playerName == null || playerName.isBlank()) {
+            return false;
+        }
+        return knownFriends.contains(serverIdentityBase(resolvePrivateTarget(playerName)));
+    }
+
+    private static void rememberKnownFriend(String playerName) {
+        if (playerName == null || playerName.isBlank()) {
+            return;
+        }
+        knownFriends.add(serverIdentityBase(resolvePrivateTarget(playerName)));
+        if (socialStore != null) {
+            socialStore.saveKnownFriends(knownFriends);
+        }
+    }
+
+    private static void forgetKnownFriend(String playerName) {
+        if (playerName == null || playerName.isBlank()) {
+            return;
+        }
+        String key = serverIdentityBase(resolvePrivateTarget(playerName));
+        knownFriends.remove(key);
+        friendWorlds.remove(key);
+        if (socialStore != null) {
+            socialStore.saveKnownFriends(knownFriends);
+        }
     }
 
     public static boolean isImportant(PrivateMessageEntry message) {
@@ -1267,6 +1337,8 @@ public final class OpsuchtChatMinecraft {
         socialStore = null;
         importantMessageKeys.clear();
         serverCommandFavorites.clear();
+        knownFriends.clear();
+        friendWorlds.clear();
 
         if (adapter == null || engine == null) {
             return;
@@ -1276,6 +1348,9 @@ public final class OpsuchtChatMinecraft {
         aliasCache = socialStore.loadAliases();
         observedPublicAliases.clear();
         importantMessageKeys.addAll(socialStore.loadImportantMessageKeys());
+        knownFriends.addAll(socialStore.loadKnownFriends().stream()
+                .map(OpsuchtChatMinecraft::serverIdentityBase)
+                .toList());
 
         if (socialStore.hasCommandFavoritesFile()) {
             serverCommandFavorites.addAll(socialStore.loadCommandFavorites());
