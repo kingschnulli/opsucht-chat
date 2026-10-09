@@ -52,6 +52,23 @@ class OpsuchtPresentationTest {
     }
 
     @Test
+    void parsesTeleportRequestsAsSocialEvents() {
+        var request = adapter.parseSocialEvent(
+                "OPSUCHT » Spieler SkyDecaxy hat dir eine Teleport-Anfrage geschickt. Klicke hier zum Annehmen."
+        );
+
+        assertNotNull(request);
+        assertEquals(de.kingschnulli.opsuchtchat.core.presentation.SocialEventKind.TELEPORT_REQUEST, request.kind());
+        assertEquals("SkyDecaxy", request.actor());
+        assertEquals("Teleport-Anfrage · SkyDecaxy", request.title());
+
+        assertEquals(
+                null,
+                adapter.parseSocialEvent("OPSUCHT » Du wurdest zum Spawn teleportiert.")
+        );
+    }
+
+    @Test
     void labelsInteractiveServerActions() {
         assertEquals(
                 "Annehmen",
