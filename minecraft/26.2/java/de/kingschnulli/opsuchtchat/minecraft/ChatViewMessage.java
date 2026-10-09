@@ -4,6 +4,7 @@ import de.kingschnulli.opsuchtchat.core.Classification;
 import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.SocialFeedEvent;
 import java.time.Instant;
 import net.minecraft.client.multiplayer.chat.GuiMessage;
 
@@ -13,6 +14,7 @@ public record ChatViewMessage(
         Classification classification,
         PublicChatLine publicChat,
         ServerFeedEvent serverEvent,
-        AuctionFeedEvent auctionEvent
+        AuctionFeedEvent auctionEvent,
+        SocialFeedEvent socialEvent
 ) {
 }
