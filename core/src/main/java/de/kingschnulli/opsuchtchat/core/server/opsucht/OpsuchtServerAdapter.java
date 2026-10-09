@@ -9,6 +9,8 @@ import de.kingschnulli.opsuchtchat.core.presentation.AuctionFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerEventKind;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.SocialEventKind;
+import de.kingschnulli.opsuchtchat.core.presentation.SocialFeedEvent;
 import de.kingschnulli.opsuchtchat.core.presentation.TextRange;
 import de.kingschnulli.opsuchtchat.core.server.ChatServerAdapter;
 import de.kingschnulli.opsuchtchat.core.server.PlayerActionMode;
@@ -29,6 +31,12 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
             "(?i)(-?\\d[\\d.,]*)\\s*(\\$|dollar|k|kk|m|mio\\.?|b)?"
     );
     private static final Pattern ITEM = Pattern.compile("\\[([^\\]]+)]");
+    private static final Pattern TPA_ACTOR = Pattern.compile(
+            "(?i)(?:spieler\\s+)?([A-Za-z0-9_.~-]{1,32}).{0,50}(?:teleport|tpa).{0,35}(?:anfrage|anfrag|geschickt|möchte|moechte)"
+    );
+    private static final Pattern TPA_ACTOR_REVERSED = Pattern.compile(
+            "(?i)(?:teleport|tpa).{0,35}(?:anfrage|anfrag).{0,50}(?:von\\s+)?([A-Za-z0-9_.~-]{1,32})"
+    );
 
     private static final List<ServerHubPage> HUB_PAGES = List.of(
             new ServerHubPage("quick", "Schnell", List.of(
@@ -445,6 +453,43 @@ public final class OpsuchtServerAdapter implements ChatServerAdapter {
         }
 
         return new ServerFeedEvent(ServerEventKind.INFO, "OPSUCHT", body, extractCommand(body));
+    }
+
+    @Override
+    public SocialFeedEvent parseSocialEvent(String text) {
+        String body = clean(text);
+        if (body.isBlank()) {
+            return null;
+        }
+
+        String lower = body.toLowerCase(Locale.ROOT);
+        boolean teleportRequest = (lower.contains("teleport") || lower.contains("tpa"))
+                && (lower.contains("anfrage")
+                    || lower.contains("anfrag")
+                    || lower.contains("annehmen")
+                    || lower.contains("tpaccept"));
+
+        if (!teleportRequest) {
+            return null;
+        }
+
+        String actor = null;
+        Matcher actorMatcher = TPA_ACTOR.matcher(body);
+        if (actorMatcher.find()) {
+            actor = actorMatcher.group(1);
+        } else {
+            Matcher reversed = TPA_ACTOR_REVERSED.matcher(body);
+            if (reversed.find()) {
+                actor = reversed.group(1);
+            }
+        }
+
+        return new SocialFeedEvent(
+                SocialEventKind.TELEPORT_REQUEST,
+                actor,
+                actor == null ? "Teleport-Anfrage" : "Teleport-Anfrage · " + actor,
+                body
+        );
     }
 
     @Override
