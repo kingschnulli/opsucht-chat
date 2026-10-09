@@ -35,6 +35,7 @@ public final class LocalSocialStore {
     private final Path importantMessagesFile;
     private final Path closedConversationsFile;
     private final Path commandFavoritesFile;
+    private final Path knownFriendsFile;
 
     public LocalSocialStore(Path rootDirectory, String adapterId) {
         this.directory = rootDirectory.resolve("social").resolve(sanitize(adapterId));
@@ -44,6 +45,40 @@ public final class LocalSocialStore {
         this.importantMessagesFile = directory.resolve("important-private.txt");
         this.closedConversationsFile = directory.resolve("closed-conversations.txt");
         this.commandFavoritesFile = directory.resolve("command-favorites.txt");
+        this.knownFriendsFile = directory.resolve("known-friends.txt");
+    }
+
+    public Set<String> loadKnownFriends() {
+        if (!Files.isRegularFile(knownFriendsFile)) {
+            return Set.of();
+        }
+        try {
+            Set<String> result = new LinkedHashSet<>();
+            for (String line : Files.readAllLines(knownFriendsFile, StandardCharsets.UTF_8)) {
+                String value = line.trim();
+                if (!value.isEmpty()) {
+                    result.add(value);
+                }
+            }
+            return Set.copyOf(result);
+        } catch (IOException ignored) {
+            return Set.of();
+        }
+    }
+
+    public void saveKnownFriends(Collection<String> friends) {
+        try {
+            Files.createDirectories(directory);
+            Files.write(
+                    knownFriendsFile,
+                    friends.stream().map(String::trim).filter(value -> !value.isEmpty()).distinct().toList(),
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING
+            );
+        } catch (IOException ignored) {
+            // Friend hints are optional local state.
+        }
     }
 
     public boolean hasCommandFavoritesFile() {
