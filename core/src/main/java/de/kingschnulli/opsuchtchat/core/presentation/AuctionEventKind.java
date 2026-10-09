@@ -5,5 +5,6 @@ public enum AuctionEventKind {
     BID,
     COUNTDOWN,
     SOLD,
+    CANCELLED,
     OTHER
 }
