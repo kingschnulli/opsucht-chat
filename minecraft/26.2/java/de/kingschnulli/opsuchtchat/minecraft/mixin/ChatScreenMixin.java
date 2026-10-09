@@ -10,6 +10,7 @@ import de.kingschnulli.opsuchtchat.core.presentation.AuctionSessionSnapshot;
 import de.kingschnulli.opsuchtchat.core.presentation.PublicChatLine;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerEventKind;
 import de.kingschnulli.opsuchtchat.core.presentation.ServerFeedEvent;
+import de.kingschnulli.opsuchtchat.core.presentation.SocialFeedEvent;
 import de.kingschnulli.opsuchtchat.core.server.PlayerActionMode;
 import de.kingschnulli.opsuchtchat.core.server.PlayerActionSpec;
 import de.kingschnulli.opsuchtchat.core.server.ServerCommandMode;
@@ -38,6 +39,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.PlayerFaceExtractor;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.ClickEvent;
@@ -126,6 +128,10 @@ public abstract class ChatScreenMixin extends Screen {
     @Unique
     private FrameButton opsuchtChat$importantButton;
     @Unique
+    private FrameButton opsuchtChat$socialInboxButton;
+    @Unique
+    private boolean opsuchtChat$socialInboxSelected;
+    @Unique
     private final List<FrameButton> opsuchtChat$playerPrimaryActionButtons = new ArrayList<>();
     @Unique
     private final List<FrameButton> opsuchtChat$playerOverflowActionButtons = new ArrayList<>();
@@ -168,8 +174,10 @@ public abstract class ChatScreenMixin extends Screen {
         opsuchtChat$addMainTabs();
         opsuchtChat$addPrivateSidebarButtons();
         opsuchtChat$addImportantButton();
+        opsuchtChat$addSocialInboxButton();
         opsuchtChat$addPrivateHeaderActions();
         opsuchtChat$addServerWorkspaceWidgets();
+        this.setInitialFocus(this.input);
     }
 
     @Inject(method = "extractRenderState", at = @At("HEAD"))
@@ -215,7 +223,9 @@ public abstract class ChatScreenMixin extends Screen {
             graphics.text(this.font, "PN", x + 6, top + 5, TEXT, false);
 
             String partner = OpsuchtChatMinecraft.activePrivatePartner();
-            if (opsuchtChat$importantOnly) {
+            if (opsuchtChat$socialInboxSelected) {
+                graphics.text(this.font, "Anfragen", sidebarRight + 7, top + 5, ACCENT, false);
+            } else if (opsuchtChat$importantOnly) {
                 graphics.text(this.font, "★ Wichtige Nachrichten", sidebarRight + 7, top + 5, GOLD, false);
             } else if (partner != null) {
                 int headerX = sidebarRight + 7;
@@ -259,7 +269,9 @@ public abstract class ChatScreenMixin extends Screen {
         }
 
         String payPartner = opsuchtChat$payMode ? OpsuchtChatMinecraft.activePrivatePartner() : null;
-        if (payPartner != null) {
+        if (opsuchtChat$socialInboxSelected && OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE) {
+            graphics.text(this.font, "Anfragen", x + 7, inputTop + 4, MUTED, false);
+        } else if (payPartner != null) {
             String prefix = OpsuchtChatMinecraft.paymentPrefix(payPartner);
             graphics.text(this.font, prefix, x + 7, inputTop + 4, GOLD, false);
             if (this.input.getValue().isEmpty()) {
@@ -272,13 +284,63 @@ public abstract class ChatScreenMixin extends Screen {
         int contextWidth = opsuchtChat$contextWidth();
         int contextLeft = right - contextWidth - 4;
         graphics.fill(contextLeft, inputTop, right - 4, bottom - 4, PANEL_BG_ALT);
-        String context = opsuchtChat$payMode
-                ? "PAY"
-                : (opsuchtChat$importantOnly && OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE
-                        ? "★ WICHTIG"
-                        : OpsuchtChatMinecraft.inputContextLabel());
+        String context = opsuchtChat$socialInboxSelected && OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE
+                ? "ANFRAGEN"
+                : (opsuchtChat$payMode
+                        ? "PAY"
+                        : (opsuchtChat$importantOnly && OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE
+                                ? "★ WICHTIG"
+                                : OpsuchtChatMinecraft.inputContextLabel()));
         int contextX = contextLeft + Math.max(3, (contextWidth - this.font.width(context)) / 2);
         graphics.text(this.font, context, contextX, inputTop + 4, TEXT, false);
+    }
+
+    @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
+    private void opsuchtChat$keyboardFocus(
+            KeyEvent event,
+            CallbackInfoReturnable<Boolean> cir
+    ) {
+        if (!OpsuchtChatMinecraft.isChatFrameActive()) {
+            return;
+        }
+
+        // The search box owns up/down while focused; use them to move through
+        // result rows instead of letting Screen focus-navigation jump to tabs.
+        if (this.getFocused() == opsuchtChat$serverSearchInput
+                && (event.key() == 264 || event.key() == 265)) {
+            int direction = event.key() == 264 ? 1 : -1;
+            opsuchtChat$serverCommandScroll = Math.max(0, opsuchtChat$serverCommandScroll + direction);
+            cir.setReturnValue(true);
+        }
+    }
+
+    @Redirect(
+            method = "keyPressed",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/gui/screens/Screen;keyPressed(Lnet/minecraft/client/input/KeyEvent;)Z"
+            )
+    )
+    private boolean opsuchtChat$keepArrowHistoryInChatInput(Screen screen, KeyEvent event) {
+        // ChatScreen asks Screen first. Screen treats ↑/↓ as focus navigation.
+        // When the chat input is focused, return false here so ChatScreen itself
+        // receives ↑/↓ and performs the normal message-history behavior.
+        if (OpsuchtChatMinecraft.isChatFrameActive()
+                && this.getFocused() == this.input
+                && (event.key() == 264 || event.key() == 265)) {
+            return false;
+        }
+        return super.keyPressed(event);
+    }
+
+    @Inject(method = "removed", at = @At("HEAD"))
+    private void opsuchtChat$resetFocusOnClose(CallbackInfo ci) {
+        if (this.input != null) {
+            this.setInitialFocus(this.input);
+        }
+        opsuchtChat$playerActionsOpen = false;
+        opsuchtChat$payMode = false;
+        opsuchtChat$socialInboxSelected = false;
     }
 
     @Redirect(
@@ -900,6 +962,11 @@ public abstract class ChatScreenMixin extends Screen {
 
     @Unique
     private void opsuchtChat$renderPrivateTranscript(GuiGraphicsExtractor graphics, Font font) {
+        if (opsuchtChat$socialInboxSelected) {
+            opsuchtChat$renderSocialInbox(graphics, font);
+            return;
+        }
+
         opsuchtChat$messageHitboxes.clear();
         opsuchtChat$feedHitboxes.clear();
         opsuchtChat$interactiveLines.clear();
@@ -976,6 +1043,91 @@ public abstract class ChatScreenMixin extends Screen {
                     entry
             ));
             y += layout.height();
+        }
+
+        if (opsuchtChat$feedScroll > 0) {
+            graphics.text(font, "↑", right - font.width("↑"), top, MUTED, false);
+        }
+    }
+
+    @Unique
+    private void opsuchtChat$renderSocialInbox(GuiGraphicsExtractor graphics, Font font) {
+        opsuchtChat$messageHitboxes.clear();
+        opsuchtChat$feedHitboxes.clear();
+        opsuchtChat$serverClickActionHitboxes.clear();
+        opsuchtChat$interactiveLines.clear();
+
+        List<ChatViewMessage> events = OpsuchtChatMinecraft.socialInboxEvents();
+        int x = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.sidebarWidth() + 7;
+        int right = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.frameWidth() - 6;
+        int top = OpsuchtChatMinecraft.frameTop() + 20;
+        int bottom = OpsuchtChatMinecraft.messageBottom() - 4;
+
+        if (events.isEmpty()) {
+            graphics.text(font, "Keine Anfragen.", x, top + 7, MUTED, false);
+            return;
+        }
+
+        int end = Math.max(0, events.size() - Math.min(opsuchtChat$feedScroll, Math.max(0, events.size() - 1)));
+        int y = bottom;
+
+        for (int i = end - 1; i >= 0; i--) {
+            ChatViewMessage entry = events.get(i);
+            SocialFeedEvent event = entry.socialEvent();
+            List<ServerClickAction> actions = OpsuchtChatMinecraft.serverClickActions(entry);
+            List<FormattedCharSequence> lines = font.split(
+                    Component.literal(event.body()),
+                    Math.max(50, right - x - 14)
+            );
+            int height = 18 + Math.max(1, lines.size()) * 9 + (actions.isEmpty() ? 2 : 18);
+            if (y - height < top && i != end - 1) {
+                break;
+            }
+            y -= height;
+
+            graphics.fill(x, y, right, y + height - 2, CARD_BG);
+            graphics.fill(x, y, x + 2, y + height - 2, ACCENT);
+
+            int headerX = x + 7;
+            if (event.actor() != null && !event.actor().isBlank()) {
+                opsuchtChat$renderFace(graphics, event.actor(), headerX, y + 3, 14);
+                headerX += 19;
+            }
+
+            graphics.text(font, opsuchtChat$clamp(font, event.title(), Math.max(40, right - headerX - 42)), headerX, y + 4, TEXT, false);
+            String time = TIME_FORMAT.format(entry.receivedAt());
+            graphics.text(font, time, right - font.width(time) - 4, y + 4, MUTED, false);
+
+            int lineY = y + 19;
+            for (FormattedCharSequence line : lines) {
+                graphics.text(font, line, x + 7, lineY, TEXT, false);
+                lineY += 9;
+            }
+
+            int actionX = x + 7;
+            for (ServerClickAction action : actions) {
+                int actionWidth = Math.min(
+                        Math.max(38, font.width(action.label()) + 10),
+                        Math.max(38, right - actionX - 4)
+                );
+                graphics.fill(actionX, lineY + 1, actionX + actionWidth, lineY + 15, 0xE0253946);
+                graphics.fill(actionX, lineY + 14, actionX + actionWidth, lineY + 15, ACCENT);
+                int labelX = actionX + Math.max(4, (actionWidth - font.width(action.label())) / 2);
+                graphics.text(font, action.label(), labelX, lineY + 4, TEXT, false);
+                opsuchtChat$serverClickActionHitboxes.add(new ServerClickActionHitbox(
+                        actionX,
+                        lineY + 1,
+                        actionX + actionWidth,
+                        lineY + 15,
+                        action
+                ));
+                actionX += actionWidth + 4;
+                if (actionX >= right - 38) {
+                    break;
+                }
+            }
+
+            y -= 3;
         }
 
         if (opsuchtChat$feedScroll > 0) {
@@ -1132,6 +1284,8 @@ public abstract class ChatScreenMixin extends Screen {
     private void opsuchtChat$positionInput() {
         int x = OpsuchtChatMinecraft.frameX();
         int width = OpsuchtChatMinecraft.frameWidth();
+        this.input.active = !(OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE
+                && opsuchtChat$socialInboxSelected);
         int contextWidth = opsuchtChat$contextWidth();
         int inputX = x + 7;
 
@@ -1171,6 +1325,12 @@ public abstract class ChatScreenMixin extends Screen {
                             opsuchtChat$serverCommandScroll = 0;
                         }
                         OpsuchtChatMinecraft.select(category);
+                        if (category == ChatCategory.PRIVATE && OpsuchtChatMinecraft.socialUnread() > 0) {
+                            opsuchtChat$socialInboxSelected = true;
+                            OpsuchtChatMinecraft.markSocialInboxRead();
+                        } else if (category != ChatCategory.PRIVATE) {
+                            opsuchtChat$socialInboxSelected = false;
+                        }
                     },
                     () -> OpsuchtChatMinecraft.isCategorySelected(category)
             );
@@ -1493,6 +1653,7 @@ public abstract class ChatScreenMixin extends Screen {
     @Unique
     private void opsuchtChat$refreshPrivateHeaderActions() {
         boolean visible = OpsuchtChatMinecraft.activeCategory() == ChatCategory.PRIVATE
+                && !opsuchtChat$socialInboxSelected
                 && !opsuchtChat$importantOnly
                 && OpsuchtChatMinecraft.activePrivatePartner() != null;
 
@@ -1643,10 +1804,30 @@ public abstract class ChatScreenMixin extends Screen {
     }
 
     @Unique
+    private void opsuchtChat$addSocialInboxButton() {
+        opsuchtChat$socialInboxButton = new FrameButton(
+                0, 0, 70, 18, Component.literal("Anfragen"),
+                ignored -> {
+                    opsuchtChat$socialInboxSelected = true;
+                    opsuchtChat$importantOnly = false;
+                    opsuchtChat$payMode = false;
+                    opsuchtChat$playerActionsOpen = false;
+                    opsuchtChat$feedScroll = 0;
+                    OpsuchtChatMinecraft.markSocialInboxRead();
+                    this.setInitialFocus(this.input);
+                },
+                () -> opsuchtChat$socialInboxSelected
+        );
+        opsuchtChat$socialInboxButton.visible = false;
+        this.addRenderableWidget(opsuchtChat$socialInboxButton);
+    }
+
+    @Unique
     private void opsuchtChat$addImportantButton() {
         opsuchtChat$importantButton = new FrameButton(
                 0, 0, 18, 14, Component.literal("★"),
                 ignored -> {
+                    opsuchtChat$socialInboxSelected = false;
                     opsuchtChat$importantOnly = !opsuchtChat$importantOnly;
                     opsuchtChat$playerActionsOpen = false;
                     opsuchtChat$feedScroll = 0;
@@ -1664,11 +1845,27 @@ public abstract class ChatScreenMixin extends Screen {
 
         int x = OpsuchtChatMinecraft.frameX() + 3;
         int top = OpsuchtChatMinecraft.frameTop();
-        int y = top + 18;
         int sidebarWidth = OpsuchtChatMinecraft.sidebarWidth();
+        int rowWidth = Math.max(58, sidebarWidth - 6);
+        int y = top + 18;
+
+        if (opsuchtChat$socialInboxButton != null) {
+            int unread = OpsuchtChatMinecraft.socialUnread();
+            boolean hasRequests = !OpsuchtChatMinecraft.socialInboxEvents().isEmpty();
+            opsuchtChat$socialInboxButton.visible = visible && (hasRequests || unread > 0);
+            if (opsuchtChat$socialInboxButton.visible) {
+                opsuchtChat$socialInboxButton.setRectangle(rowWidth, 18, x, y);
+                opsuchtChat$socialInboxButton.setMessage(Component.literal(
+                        unread > 0 ? "Anfragen [" + Math.min(unread, 99) + "]" : "Anfragen"
+                ));
+                y += 21;
+            } else if (opsuchtChat$socialInboxSelected) {
+                opsuchtChat$socialInboxSelected = false;
+            }
+        }
+
         int availableSlots = Math.max(0, (OpsuchtChatMinecraft.messageBottom() - y - 2) / CONVERSATION_ROW_HEIGHT);
         int maxVisible = Math.min(PRIVATE_TAB_SLOTS, availableSlots);
-        int rowWidth = Math.max(58, sidebarWidth - 6);
 
         if (opsuchtChat$importantButton != null) {
             opsuchtChat$importantButton.visible = visible;
