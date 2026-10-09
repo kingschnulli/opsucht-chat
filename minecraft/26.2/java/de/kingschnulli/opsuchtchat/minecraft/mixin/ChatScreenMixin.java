@@ -307,6 +307,27 @@ public abstract class ChatScreenMixin extends Screen {
             return;
         }
 
+        // Pay is an in-place PN action. Handle Enter ourselves so vanilla cannot
+        // close the chat screen after submitting the command.
+        if (opsuchtChat$payMode
+                && (event.key() == 257 || event.key() == 335)
+                && OpsuchtChatMinecraft.activePrivatePartner() != null) {
+            String value = this.input.getValue();
+            if (!value.isBlank()) {
+                OpsuchtChatMinecraft.handlePaymentInput(
+                        OpsuchtChatMinecraft.activePrivatePartner(),
+                        value,
+                        true
+                );
+                this.input.setValue("");
+            }
+            opsuchtChat$payMode = false;
+            opsuchtChat$feedScroll = 0;
+            opsuchtChat$focusComposer();
+            cir.setReturnValue(true);
+            return;
+        }
+
         // Tab is the explicit opt-in for navigating UI widgets with the keyboard.
         if (event.key() == 258) {
             opsuchtChat$keyboardNavigationMode = true;
