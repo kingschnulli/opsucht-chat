@@ -988,6 +988,7 @@ public abstract class ChatScreenMixin extends Screen {
 
         opsuchtChat$messageHitboxes.clear();
         opsuchtChat$feedHitboxes.clear();
+        opsuchtChat$serverClickActionHitboxes.clear();
         opsuchtChat$interactiveLines.clear();
 
         int x = OpsuchtChatMinecraft.frameX() + OpsuchtChatMinecraft.sidebarWidth() + 7;
@@ -996,12 +997,36 @@ public abstract class ChatScreenMixin extends Screen {
         int bottom = OpsuchtChatMinecraft.messageBottom() - 4;
         int textWidth = Math.max(36, right - x - 24);
 
+        String partner = OpsuchtChatMinecraft.activePrivatePartner();
+        List<ChatViewMessage> partnerEvents = partner == null
+                ? List.of()
+                : OpsuchtChatMinecraft.socialInboxEvents(partner);
+
+        // Actionable social events sit directly inside the player's conversation.
+        // This makes a TPA feel like a PN instead of an unrelated server message.
+        int eventY = top;
+        int eventStart = Math.max(0, partnerEvents.size() - 2);
+        for (int i = eventStart; i < partnerEvents.size(); i++) {
+            eventY = opsuchtChat$renderInlineSocialEvent(
+                    graphics,
+                    font,
+                    partnerEvents.get(i),
+                    x,
+                    right,
+                    eventY
+            );
+            eventY += 3;
+        }
+        top = eventY;
+
         List<PrivateMessageEntry> messages = opsuchtChat$privateSource();
         if (messages.isEmpty()) {
-            String empty = opsuchtChat$importantOnly
-                    ? "Noch keine wichtigen Nachrichten."
-                    : "Noch keine Nachrichten.";
-            graphics.text(font, empty, x, top + 7, MUTED, false);
+            if (partnerEvents.isEmpty()) {
+                String empty = opsuchtChat$importantOnly
+                        ? "Noch keine wichtigen Nachrichten."
+                        : "Noch keine Nachrichten.";
+                graphics.text(font, empty, x, top + 7, MUTED, false);
+            }
             return;
         }
 
@@ -1067,6 +1092,79 @@ public abstract class ChatScreenMixin extends Screen {
         if (opsuchtChat$feedScroll > 0) {
             graphics.text(font, "↑", right - font.width("↑"), top, MUTED, false);
         }
+    }
+
+    @Unique
+    private int opsuchtChat$renderInlineSocialEvent(
+            GuiGraphicsExtractor graphics,
+            Font font,
+            ChatViewMessage entry,
+            int x,
+            int right,
+            int y
+    ) {
+        SocialFeedEvent event = entry.socialEvent();
+        if (event == null) {
+            return y;
+        }
+
+        List<ServerClickAction> actions = OpsuchtChatMinecraft.serverClickActions(entry);
+        List<FormattedCharSequence> lines = font.split(
+                Component.literal(event.body()),
+                Math.max(50, right - x - 14)
+        );
+        int height = 18 + Math.max(1, lines.size()) * 9 + (actions.isEmpty() ? 2 : 18);
+
+        graphics.fill(x, y, right, y + height - 2, CARD_BG);
+        graphics.fill(x, y, x + 2, y + height - 2, ACCENT);
+
+        int headerX = x + 7;
+        if (event.actor() != null && !event.actor().isBlank()) {
+            opsuchtChat$renderFace(graphics, event.actor(), headerX, y + 3, 14);
+            headerX += 19;
+        }
+
+        graphics.text(
+                font,
+                opsuchtChat$clamp(font, event.title(), Math.max(40, right - headerX - 42)),
+                headerX,
+                y + 4,
+                TEXT,
+                false
+        );
+        String time = TIME_FORMAT.format(entry.receivedAt());
+        graphics.text(font, time, right - font.width(time) - 4, y + 4, MUTED, false);
+
+        int lineY = y + 19;
+        for (FormattedCharSequence line : lines) {
+            graphics.text(font, line, x + 7, lineY, TEXT, false);
+            lineY += 9;
+        }
+
+        int actionX = x + 7;
+        for (ServerClickAction action : actions) {
+            int actionWidth = Math.min(
+                    Math.max(38, font.width(action.label()) + 10),
+                    Math.max(38, right - actionX - 4)
+            );
+            graphics.fill(actionX, lineY + 1, actionX + actionWidth, lineY + 15, 0xE0253946);
+            graphics.fill(actionX, lineY + 14, actionX + actionWidth, lineY + 15, ACCENT);
+            int labelX = actionX + Math.max(4, (actionWidth - font.width(action.label())) / 2);
+            graphics.text(font, action.label(), labelX, lineY + 4, TEXT, false);
+            opsuchtChat$serverClickActionHitboxes.add(new ServerClickActionHitbox(
+                    actionX,
+                    lineY + 1,
+                    actionX + actionWidth,
+                    lineY + 15,
+                    action
+            ));
+            actionX += actionWidth + 4;
+            if (actionX >= right - 38) {
+                break;
+            }
+        }
+
+        return y + height;
     }
 
     @Unique
