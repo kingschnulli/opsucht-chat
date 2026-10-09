@@ -488,7 +488,12 @@ public abstract class ChatScreenMixin extends Screen {
                     this.input.moveCursorToEnd(false);
                     opsuchtChat$focusComposer();
                 } else {
-                    OpsuchtChatMinecraft.executeServerCommand(hitbox.command());
+                    if (OpsuchtChatMinecraft.executeServerCommand(hitbox.command())) {
+                        // Server command responses are classified into the message feed.
+                        // Jump there immediately so a successful click never looks like a no-op.
+                        opsuchtChat$serverPageId = "messages";
+                        opsuchtChat$serverCommandScroll = 0;
+                    }
                     opsuchtChat$focusComposer();
                 }
 
@@ -898,7 +903,11 @@ public abstract class ChatScreenMixin extends Screen {
             int right,
             int y
     ) {
-        int accent = auction.phase() == AuctionEventKind.SOLD ? GREEN : GOLD;
+        int accent = switch (auction.phase()) {
+            case SOLD -> GREEN;
+            case CANCELLED -> RED;
+            default -> GOLD;
+        };
         graphics.fill(x, y, right, y + 27, 0xDC171E25);
         graphics.fill(x, y, x + 2, y + 27, accent);
 
@@ -1342,6 +1351,7 @@ public abstract class ChatScreenMixin extends Screen {
             case BID -> "GEBOT";
             case COUNTDOWN -> "COUNT";
             case SOLD -> "VERKAUFT";
+            case CANCELLED -> "ABGEBROCHEN";
             case OTHER -> "AUKTION";
         };
     }
@@ -1353,6 +1363,7 @@ public abstract class ChatScreenMixin extends Screen {
             case BID -> OUTGOING;
             case COUNTDOWN -> PURPLE;
             case SOLD -> GREEN;
+            case CANCELLED -> RED;
             case OTHER -> MUTED;
         };
     }
@@ -1383,6 +1394,25 @@ public abstract class ChatScreenMixin extends Screen {
         }
 
         return finder.result();
+    }
+
+    @Unique
+    private void opsuchtChat$renderCommandLabelWithTooltip(
+            GuiGraphicsExtractor graphics,
+            ServerCommandSpec command,
+            int x,
+            int y,
+            int color
+    ) {
+        Component label = Component.literal(command.label()).withStyle(style ->
+                style.withColor(color).withHoverEvent(
+                        new net.minecraft.network.chat.HoverEvent.ShowText(
+                                Component.literal(command.description())
+                        )
+                )
+        );
+        graphics.textRenderer(GuiGraphicsExtractor.HoveredTextEffects.TOOLTIP_AND_CURSOR)
+                .accept(x, y, label.getVisualOrderText());
     }
 
     @Unique
@@ -1631,7 +1661,9 @@ public abstract class ChatScreenMixin extends Screen {
                 }
 
                 graphics.fill(chipX, y, chipX + chipWidth, y + 15, 0xD0212B34);
-                graphics.text(font, command.label(), chipX + 4, y + 3, TEXT, false);
+                opsuchtChat$renderCommandLabelWithTooltip(
+                        graphics, command, chipX + 4, y + 3, TEXT
+                );
                 opsuchtChat$serverCommandHitboxes.add(new ServerCommandHitbox(
                         chipX, y, chipX + chipWidth, y + 15, command, false
                 ));
@@ -1679,7 +1711,9 @@ public abstract class ChatScreenMixin extends Screen {
                 graphics.fill(rowX, rowY, rowRight, rowY + 1, 0xAA425261);
 
                 int commandX = rowX + 4;
-                graphics.text(font, command.label(), commandX, rowY + 4, TEXT, false);
+                opsuchtChat$renderCommandLabelWithTooltip(
+                        graphics, command, commandX, rowY + 4, TEXT
+                );
 
                 String description = opsuchtChat$clamp(
                         font,
