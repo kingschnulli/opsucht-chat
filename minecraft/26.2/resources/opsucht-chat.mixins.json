@@ -4,6 +4,7 @@
   "package": "de.kingschnulli.opsuchtchat.minecraft.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "AbstractContainerMenuMixin",
     "ChatComponentMixin",
     "ChatScreenMixin",
     "LocalPlayerMixin"
